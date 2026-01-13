@@ -20,6 +20,11 @@ return Application::configure(basePath: dirname(__DIR__))
             HandleAppearance::class,
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,
+            \App\Http\Middleware\EnsureContextHeaders::class,
+        ]);
+
+        $middleware->api(append: [
+            \App\Http\Middleware\EnsureContextHeaders::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
