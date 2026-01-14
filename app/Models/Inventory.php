@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Inventory extends Model
 {
+    use \App\AccessControl\Traits\BelongsToTenant;
+
     protected $primaryKey = 'inventory_id';
     public $incrementing = false;
     protected $keyType = 'string';
@@ -17,6 +19,7 @@ class Inventory extends Model
         'branch_id',
         'drug_id',
         'batch_id',
+        'selling_price',
         'quantity_on_hand',
     ];
 

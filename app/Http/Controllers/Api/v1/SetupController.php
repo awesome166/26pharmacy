@@ -78,15 +78,12 @@ class SetupController extends Controller
                 );
             }
 
-            // Sync Allowed Users
-            if (!empty($data['users'])) {
                 foreach ($data['users'] as $user) {
                     DB::table('users')->updateOrInsert(
-                        ['user_id' => $user['user_id']],
+                        ['id' => $user['id']],
                         $user
                     );
                 }
-            }
         });
 
         return response()->json(['message' => 'Activation successful. Local instance initialized.']);

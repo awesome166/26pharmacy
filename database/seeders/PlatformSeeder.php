@@ -7,6 +7,9 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Faker\Factory as Faker;
 use Illuminate\Support\Facades\Hash;
+use App\Models\User;
+use App\AccessControl\Models\Role;
+use App\AccessControl\Models\Permission;
 
 class PlatformSeeder extends Seeder
 {
@@ -64,19 +67,41 @@ class PlatformSeeder extends Seeder
             }
         }
 
+        // Create Permissions
+        $permissions = [
+            'manage-platform' => 'Platform Administration',
+            'manage-inventory' => 'Inventory Management',
+            'process-sales' => 'POS Sales Processing',
+            'view-reports' => 'Reports & Analytics',
+        ];
+        $permMap = [];
+        foreach ($permissions as $name => $group) {
+            $p = Permission::create([
+                'permission_id' => (string) Str::uuid(),
+                'name' => $name,
+                'group' => $group,
+                'guard_name' => 'web',
+            ]);
+            $permMap[$name] = $p->permission_id;
+        }
+
         // Create Roles (3)
         $roleIds = [];
-        $roleNames = ['admin', 'manager', 'staff'];
-        foreach ($roleNames as $roleName) {
-            $roleId = (string) Str::uuid();
-            DB::table('roles')->insert([
-                'role_id' => $roleId,
-                'role_name' => $roleName,
-                'permissions' => json_encode([]),
-                'created_at' => now(),
-                'updated_at' => now(),
+        $rolesData = [
+            'admin' => array_values($permMap),
+            'pharmacist' => [$permMap['manage-inventory'], $permMap['process-sales'], $permMap['view-reports']],
+            'cashier' => [$permMap['process-sales']],
+        ];
+        foreach ($rolesData as $roleName => $pIds) {
+            $role = Role::create([
+                'role_id' => (string) Str::uuid(),
+                'name' => $roleName,
+                'guard_name' => 'web',
+                'tenant_id' => null,
             ]);
-            $roleIds[] = $roleId;
+
+            $role->permissions()->attach($pIds);
+            $roleIds[] = $role->role_id;
         }
 
         // Create Drugs (10)
@@ -190,26 +215,31 @@ class PlatformSeeder extends Seeder
         // Create Users (at least 15 to ensure coverage) and Pivot Assignments
         for ($u = 0; $u < 15; $u++) {
             $userId = (string) Str::uuid();
-            DB::table('users')->insert([
-                'user_id' => $userId,
+            $user = User::create([
+                'id' => $userId,
                 'name' => $faker->name,
                 'email' => $faker->unique()->email,
                 'password' => Hash::make('password@1'),
                 'is_active' => true,
-                'created_at' => now(),
-                'updated_at' => now(),
             ]);
 
             // Assign to exactly 1 tenant
             $tenantId = $faker->randomElement($tenants);
+            $roleId = $faker->randomElement($roleIds);
             DB::table('tenant_user')->insert([
                 'tenant_id' => $tenantId,
                 'user_id' => $userId,
-                'role_id' => $faker->randomElement($roleIds),
+                'role_id' => $roleId,
                 'is_primary' => true,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
+
+            // Assign role in AccessControl pivot using relationship
+            $role = Role::find($roleId);
+            if ($role) {
+                $role->users()->attach($user->id);
+            }
 
             // Assign to at least 1 branch belonging to that tenant
             $tenantBranches = array_filter($branches, function($branchId) use ($tenantId) {

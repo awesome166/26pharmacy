@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Sale extends Model
 {
+    use \App\AccessControl\Traits\BelongsToTenant;
+
     protected $primaryKey = 'sale_id';
     public $incrementing = false;
     protected $keyType = 'string';

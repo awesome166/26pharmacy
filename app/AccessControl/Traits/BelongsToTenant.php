@@ -28,19 +28,19 @@ trait BelongsToTenant
      */
     protected static function bootBelongsToTenant()
     {
-        // Automatically set account_id to current tenant's id on creation, if not already set
+        // Automatically set tenant_id to current tenant's id on creation, if not already set
         static::creating(function ($model) {
-            if (!$model->account_id && App::has('currentTenant')) {
-                $model->account_id = App::get('currentTenant')->id;
+            if (!$model->tenant_id && App::has('currentTenant')) {
+                $model->tenant_id = App::get('currentTenant')->tenant_id;
             }
         });
 
-        // Add a global scope to ensure all queries are filtered by the current tenant's account_id
+        // Add a global scope to ensure all queries are filtered by the current tenant's tenant_id
         static::addGlobalScope('tenant', function (Builder $builder) {
             if (App::has('currentTenant')) {
                 $builder->where(
-                    $builder->getModel()->getTable() . '.account_id',
-                    App::get('currentTenant')->id
+                    $builder->getModel()->getTable() . '.tenant_id',
+                    App::get('currentTenant')->tenant_id
                 );
             }
         });
@@ -50,11 +50,11 @@ trait BelongsToTenant
      * Local scope to filter queries by a specific tenant.
      *
      * @param Builder $query
-     * @param int|null $accountId
+     * @param string|null $tenantId
      * @return Builder
      */
-    public function scopeByTenant(Builder $query, $accountId = null)
+    public function scopeByTenant(Builder $query, $tenantId = null)
     {
-        return $query->where('account_id', $accountId ?? App::get('currentTenant')->id);
+        return $query->where('tenant_id', $tenantId ?? App::get('currentTenant')->tenant_id);
     }
 }

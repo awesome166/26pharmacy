@@ -17,7 +17,7 @@ class FinalizeSaleRequest extends FormRequest
             'tenant_id' => 'required|uuid|exists:tenants,tenant_id',
             'branch_id' => 'required|uuid|exists:branches,branch_id',
             // 'device_id' => 'required|uuid|exists:devices,device_id',
-            'user_id' => 'required|uuid|exists:users,user_id',
+            'user_id' => 'required|uuid|exists:users,id',
             'subtotal' => 'required|numeric|min:0',
             // 'jurisdiction' => 'required|string',
             'payment_type' => 'required|string|in:cash,card,mobile_money',

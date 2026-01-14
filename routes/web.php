@@ -16,6 +16,7 @@ use App\Http\Controllers\Api\v1\SyncController;
 use App\Http\Controllers\Api\v1\CloudSyncController;
 use App\Http\Controllers\Api\v1\StoreController;
 use App\Http\Controllers\Api\v1\DrugController;
+use App\Http\Controllers\Api\v1\BatchController;
 
 
 Route::get('/', function () {
@@ -47,12 +48,12 @@ Route::middleware(['auth'])->prefix('app')->group(function () {
     Route::resource('users', UserController::class);
 
     Route::resource('drugs', DrugController::class);
+    Route::resource('batches', BatchController::class);
 
     // Sales & Inventory
     Route::resource('sales', SaleController::class)->only(['index', 'show', 'store']);
     Route::get('store', [StoreController::class, 'index'])->name('store.index');
-    Route::resource('inventory', InventoryController::class)->only(['index']);
-    // Route::resource('inventory', InventoryController::class)->only(['index']);
+    Route::resource('inventory', InventoryController::class)->only(['index', 'store']);
     Route::get('inventory/search', [InventoryController::class, 'search'])->name('inventory.search');
     Route::post('inventory/adjust', [InventoryController::class, 'adjustStock'])->name('inventory.adjust');
     Route::post('inventory/transfer', [\App\Http\Controllers\Api\v1\TransferController::class, 'initiateTransfer'])->name('inventory.transfer');

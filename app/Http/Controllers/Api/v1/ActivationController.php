@@ -38,7 +38,7 @@ class ActivationController extends Controller
 
         $users = [
             [
-                'user_id' => Str::uuid()->toString(),
+                'id' => Str::uuid()->toString(),
                 'tenant_id' => $tenantId,
                 'name' => 'Admin User',
                 'email' => 'admin@pharmacy.com',

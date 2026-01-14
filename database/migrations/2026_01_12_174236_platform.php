@@ -42,12 +42,12 @@ return new class extends Migration
         });
 
 
-        Schema::create('roles', function (Blueprint $table) {
-            $table->uuid('role_id')->primary();
-            $table->string('role_name');
-            $table->json('permissions')->nullable();
-            $table->timestamps();
-        });
+        // Schema::create('roles', function (Blueprint $table) {
+        //     $table->uuid('role_id')->primary();
+        //     $table->string('role_name');
+        //     $table->json('permissions')->nullable();
+        //     $table->timestamps();
+        // });
 
         // ----------------------------
         // Pivot Tables (Many-to-Many)
@@ -212,7 +212,7 @@ return new class extends Migration
         Schema::dropIfExists('inventory');
         Schema::dropIfExists('sales');
         Schema::dropIfExists('event_ledger');
-        Schema::dropIfExists('roles');
+        // Schema::dropIfExists('roles');
         // Schema::dropIfExists('users');
         Schema::dropIfExists('devices');
         Schema::dropIfExists('branches');

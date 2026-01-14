@@ -29,6 +29,7 @@ class InventoryService
                 'drugs.name as drug_name',
                 'drugs.strength',
                 'batches.expiry_date',
+                'batches.lot_number',
                 'batches.batch_id'
             )
             ->paginate($perPage);

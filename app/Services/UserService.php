@@ -18,7 +18,7 @@ class UserService
     {
         $id = \Illuminate\Support\Str::uuid();
         \Illuminate\Support\Facades\DB::table('users')->insert([
-            'user_id' => $id,
+            'id' => $id,
             'tenant_id' => $tenantId,
             'name' => $data['name'],
             'email' => $data['email'],
@@ -29,7 +29,7 @@ class UserService
             'updated_at' => now(),
         ]);
 
-        return (object) ['user_id' => $id];
+        return (object) ['id' => $id];
     }
 
     /**
@@ -46,7 +46,7 @@ class UserService
         }
 
         return (bool) \Illuminate\Support\Facades\DB::table('users')
-            ->where('user_id', $userId)
+            ->where('id', $userId)
             ->update(array_merge($data, ['updated_at' => now()]));
     }
 
@@ -59,7 +59,7 @@ class UserService
     public function deactivateUser(string $userId)
     {
         return (bool) \Illuminate\Support\Facades\DB::table('users')
-            ->where('user_id', $userId)
+            ->where('id', $userId)
             ->update(['is_active' => false, 'updated_at' => now()]);
     }
 
@@ -72,7 +72,7 @@ class UserService
     public function getUser(string $userId)
     {
         return \Illuminate\Support\Facades\DB::table('users')
-            ->where('user_id', $userId)
+            ->where('id', $userId)
             ->first();
     }
 
@@ -96,7 +96,7 @@ class UserService
     public function deleteUser(string $userId)
     {
         return (bool) \Illuminate\Support\Facades\DB::table('users')
-            ->where('user_id', $userId)
+            ->where('id', $userId)
             ->delete();
     }
 }

@@ -137,10 +137,10 @@ const finalizeSale = () => {
 
   // Prepare payload matching FinalizeSaleRequest
   const payload = {
-    tenant_id: props.user.tenant_id || '00000000-0000-0000-0000-000000000000',
+    tenant_id: props.user.tenants[0].tenant_id || '0557ce57-282c-4c83-a452-eab8d128e728',
     branch_id: props.branch_id,
     device_id: 'browser-device',
-    user_id: props.user.user_id || props.user.id,
+    user_id: props.user.id,
     subtotal: totalAmount.value,
     tax_amount: taxAmount.value,
     payment_type: paymentType.value,
@@ -183,7 +183,7 @@ const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currenc
       <div class="flex flex-col w-7/12 gap-4 h-full">
         <!-- Search & Scanner Bar -->
         <div class="flex gap-2">
-          <Input v-model="search" placeholder="Search items or scan barcode..." class="flex-1 h-12 text-lg"
+          <Input v-model="search" placeholder="Search items or scan barcode..." class="flex-1 h-18 text-xl"
             ref="scannerRef" autofocus />
         </div>
 
@@ -238,8 +238,8 @@ const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currenc
 
       <!-- RIGHT PANEL: INVOICE (5/12) -->
       <div class="flex flex-col w-5/12 gap-4 h-full">
-        <div class="flex-1 rounded-xl border bg-card text-card-foreground shadow flex flex-col h-full">
-          <div class="p-4 border-b bg-muted/20 flex justify-between items-center">
+        <div class="flex-1 rounded-xl border bg-card text-card-foreground shadow flex flex-col h-full  ">
+          <div class="p-4 border-b bg-muted/20 flex justify-between items-center bg-slate-900 text-white ">
             <div>
               <h2 class="text-xl font-bold tracking-tight">Current Sale</h2>
               <p class="text-xs text-muted-foreground">Invoice Preview</p>
@@ -261,7 +261,7 @@ const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currenc
                 <div class="text-xs text-muted-foreground" v-if="item.dosage_instructions?.full_frequency">
                   {{ item.dosage_instructions.measurement }} {{ item.dosage_instructions.full_frequency }}
                   <span v-if="item.dosage_instructions.special.length">({{ item.dosage_instructions.special.join(', ')
-                  }})</span>
+                    }})</span>
                 </div>
                 <div class="text-sm mt-1">
                   {{ item.quantity }} x {{ formatCurrency(item.price) }}
@@ -311,7 +311,8 @@ const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currenc
               </Button> -->
             </div>
 
-            <Button class="w-full h-12 text-lg" :disabled="cart.length === 0 || processing" @click="finalizeSale">
+            <Button class="w-full h-12 text-lg  bg-slate-900 text-white   hover:bg-slate-800"
+              :disabled="cart.length === 0 || processing" @click="finalizeSale">
               {{ processing ? 'Processing...' : 'Finalize Sale' }}
             </Button>
           </div>

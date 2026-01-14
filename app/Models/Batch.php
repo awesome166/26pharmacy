@@ -16,6 +16,10 @@ class Batch extends Model
         'batch_id',
         'drug_id',
         'expiry_date',
+        'lot_number',
+        'quantity',
+        'cost_price',
+        'name',
         'manufacturer',
     ];
 

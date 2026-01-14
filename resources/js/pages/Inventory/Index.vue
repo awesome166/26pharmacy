@@ -1,22 +1,29 @@
 <script setup lang="ts">
-import { Head, router, useForm } from '@inertiajs/vue3';
+import { Head, router, useForm, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { ref, watch } from 'vue';
+import { ref, watch, computed } from 'vue';
 import { debounce } from 'lodash';
 import type { BreadcrumbItem } from '@/types';
+import AddInventoryDialog from './AddInventoryDialog.vue';
+import CreateBatchDialog from './CreateBatchDialog.vue';
 
 const props = defineProps({
     inventory: Object,
     filters: Object,
 });
 
+const page = usePage();
+const user = computed(() => page.props.auth.user);
+
 const search = ref(props.filters?.search || '');
 const adjustOpen = ref(false);
 const selectedItem = ref<any>(null);
+const addStockDialog = ref();
+const createBatchDialog = ref();
 
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Dashboard', href: '/dashboard' },
@@ -24,7 +31,7 @@ const breadcrumbs: BreadcrumbItem[] = [
 ];
 
 watch(search, debounce((value) => {
-    router.get('/inventory', { search: value }, {
+    router.get('/app/inventory', { search: value }, {
         preserveState: true,
         replace: true,
     });
@@ -58,6 +65,14 @@ const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
     return new Date(dateString).toLocaleDateString();
 };
+
+const openAddStock = () => {
+    addStockDialog.value.openDialog();
+};
+
+const openCreateBatch = () => {
+    createBatchDialog.value.openDialog();
+};
 </script>
 
 <template>
@@ -73,6 +88,8 @@ const formatDate = (dateString) => {
                 </div>
                 <div class="flex items-center gap-2">
                     <Input v-model="search" placeholder="Search drugs or batches..." class="w-64" />
+                    <Button variant="outline" @click="openCreateBatch">New Batch</Button>
+                    <Button @click="openAddStock">Add Stock</Button>
                 </div>
             </div>
 
@@ -84,22 +101,29 @@ const formatDate = (dateString) => {
                                 <tr class="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted">
                                     <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Drug
                                         Name</th>
-                                    <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Batch
-                                        ID</th>
+                                    <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Lot
+                                        Number</th>
                                     <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
                                         Expiry</th>
                                     <th class="h-12 px-4 text-right align-middle font-medium text-muted-foreground">
-                                        Quantity</th>
+                                        Price</th>
+                                    <th class="h-12 px-4 text-right align-middle font-medium text-muted-foreground">
+                                        Qty</th>
                                     <th class="h-12 px-4 text-right align-middle font-medium text-muted-foreground">
                                         Actions</th>
                                 </tr>
                             </thead>
                             <tbody class="[&_tr:last-child]:border-0">
-                                <tr v-for="item in inventory.data" :key="item.inventory_id"
+                                <tr v-for="item in inventory?.data" :key="item.inventory_id"
                                     class="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted">
-                                    <td class="p-4 align-middle font-medium">{{ item.drug_name }}</td>
-                                    <td class="p-4 align-middle">{{ item.batch_id.substring(0, 8) }}...</td>
+                                    <td class="p-4 align-middle font-medium">
+                                        {{ item.drug_name }}
+                                        <div class="text-xs text-muted-foreground">{{ item.strength }}</div>
+                                    </td>
+                                    <td class="p-4 align-middle">{{ item.lot_number || item.batch_id.substring(0, 8) }}
+                                    </td>
                                     <td class="p-4 align-middle">{{ formatDate(item.expiry_date) }}</td>
+                                    <td class="p-4 align-middle text-right font-mono">{{ item.selling_price }}</td>
                                     <td class="p-4 align-middle text-right">
                                         <span :class="{ 'text-red-500 font-bold': item.quantity_on_hand < 10 }">
                                             {{ item.quantity_on_hand }}
@@ -111,8 +135,8 @@ const formatDate = (dateString) => {
                                         </Button>
                                     </td>
                                 </tr>
-                                <tr v-if="inventory.data.length === 0">
-                                    <td colspan="5" class="p-4 text-center text-muted-foreground">
+                                <tr v-if="!inventory?.data || inventory.data.length === 0">
+                                    <td colspan="6" class="p-4 text-center text-muted-foreground">
                                         No inventory found.
                                     </td>
                                 </tr>
@@ -122,7 +146,8 @@ const formatDate = (dateString) => {
                 </div>
 
                 <!-- Pagination -->
-                <div class="flex items-center justify-end p-4 gap-2" v-if="inventory.links.length > 3">
+                <div class="flex items-center justify-end p-4 gap-2"
+                    v-if="inventory?.links && inventory.links.length > 3">
                     <template v-for="(link, key) in inventory.links" :key="key">
                         <Button v-if="link.url" variant="outline" size="sm" :disabled="link.active" as-child>
                             <a :href="link.url" v-html="link.label"></a>
@@ -132,6 +157,9 @@ const formatDate = (dateString) => {
                 </div>
             </div>
         </div>
+
+        <AddInventoryDialog ref="addStockDialog" :tenantId="user?.tenant_id" :branchId="user?.branch_id" />
+        <CreateBatchDialog ref="createBatchDialog" />
 
         <!-- Adjust Stock Modal -->
         <Dialog :open="adjustOpen" @update:open="adjustOpen = $event">

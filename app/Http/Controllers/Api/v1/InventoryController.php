@@ -98,11 +98,18 @@ class InventoryController extends Controller
             'branch_id' => 'required|string|exists:branches,branch_id',
             'drug_id' => 'required|string|exists:drugs,drug_id',
             'batch_id' => 'required|string|exists:batches,batch_id',
-            'cost_price' => 'required|numeric',
             'selling_price' => 'required|numeric',
             'quantity_on_hand' => 'required|integer|min:1',
         ]);
-        $inventory = \App\Models\Inventory::create($validated);
-        return response()->json($inventory, 201);
+
+        $inventory = \App\Models\Inventory::create(array_merge($validated, [
+            'inventory_id' => \Illuminate\Support\Str::uuid()
+        ]));
+
+        if ($request->wantsJson()) {
+            return response()->json($inventory, 201);
+        }
+
+        return redirect()->back()->with('success', 'Stock added');
     }
 }

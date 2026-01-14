@@ -93,6 +93,12 @@
             "php-http/discovery": true
         }
     },
+    "repositories": [
+    {
+        "type": "vcs",
+        "url": "https://github.com/awesome166/laravel_abac"
+    }
+],
     "minimum-stability": "stable",
     "prefer-stable": true
 }

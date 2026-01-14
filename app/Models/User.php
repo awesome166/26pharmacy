@@ -14,7 +14,7 @@ class User extends Authenticatable
     /** @use HasFactory<\Database\Factories\UserFactory> */
     use HasFactory, Notifiable, TwoFactorAuthenticatable;
 
-    protected $primaryKey = 'user_id';
+    protected $primaryKey = 'id';
     public $incrementing = false;
     protected $keyType = 'string';
 
@@ -24,13 +24,21 @@ class User extends Authenticatable
      * @var list<string>
      */
     protected $fillable = [
-        'user_id',
-        'tenant_id',
+        'id',
         'name',
         'email',
         'password',
-        'role_id',
         'is_active',
+    ];
+
+    protected $appends = [
+        'all_permissions',
+    ];
+
+    protected $with = [
+        'tenants',
+        'branches',
+        'roles',
     ];
 
     public function tenants()
@@ -70,13 +78,39 @@ class User extends Authenticatable
         ];
     }
 
-    public function tenant(): BelongsTo
+    // AccessControl Roles & Permissions
+    public function roles()
     {
-        return $this->belongsTo(Tenant::class, 'tenant_id', 'tenant_id');
+        return $this->belongsToMany(\App\AccessControl\Models\Role::class, 'user_roles', 'user_id', 'role_id');
     }
 
-    public function role(): BelongsTo
+    public function permissions()
     {
-        return $this->belongsTo(Role::class, 'role_id', 'role_id');
+        return $this->belongsToMany(\App\AccessControl\Models\Permission::class, 'user_permissions', 'user_id', 'permission_id');
+    }
+
+    public function getAllPermissionsAttribute()
+    {
+        return $this->getCachedPermissionsAttribute();
+    }
+
+    public function getCachedPermissionsAttribute()
+    {
+        return \Illuminate\Support\Facades\Cache::rememberForever("permissions_user_{$this->id}", function () {
+            return $this->allPermissions();
+        });
+    }
+
+    public function allPermissions()
+    {
+        $direct = $this->permissions->pluck('name');
+        $fromRoles = $this->roles->flatMap->permissions->pluck('name');
+
+        return $direct->merge($fromRoles)->unique()->values();
+    }
+
+    public function hasPermissionTo($permission)
+    {
+        return $this->all_permissions->contains($permission);
     }
 }

@@ -128,6 +128,8 @@ const specialInstructions = [
   "refrigerate after opening",
   "take at bedtime",
   "avoid sunlight",
+  "shake well before use",
+
 
 ];
 
@@ -236,10 +238,10 @@ const previewText = computed(() => {
         <Label>Route</Label>
         <Select v-model="model.route">
           <SelectTrigger class="w-full">
-        <SelectValue placeholder="Select Route" />
+            <SelectValue placeholder="Select Route" />
           </SelectTrigger>
           <SelectContent class="w-full">
-        <SelectItem v-for="r in routes" :key="r" :value="r">{{ r }}</SelectItem>
+            <SelectItem v-for="r in routes" :key="r" :value="r">{{ r }}</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -255,27 +257,28 @@ const previewText = computed(() => {
     <div class="space-y-2 w-[300px]">
       <Label>Special Instructions</Label>
       <Popover v-model:open="openRoute">
-      <PopoverTrigger as-child>
-        <Button variant="outline" role="combobox" class="w-full justify-between truncate">
-        <span class="truncate">
-          {{ model.special.length > 0 ? model.special.join(', ') : "Select Special Instructions" }}
-        </span>
-        <ChevronsUpDown class="ml-2 h-4 w-4 shrink-0 opacity-50" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent class="w-[300px] p-0 max-h-60 overflow-auto">
-        <Command>
-        <CommandInput placeholder="Search special instructions..." />
-        <CommandList>
-          <CommandGroup>
-          <CommandItem v-for="term in specialInstructions" :key="term" :value="term" @select="toggleSpecial(term)">
-            <Check :class="cn('mr-2 h-4 w-4', model.special.includes(term) ? 'opacity-100' : 'opacity-0')" />
-            {{ term }}
-          </CommandItem>
-          </CommandGroup>
-        </CommandList>
-        </Command>
-      </PopoverContent>
+        <PopoverTrigger as-child>
+          <Button variant="outline" role="combobox" class="w-full justify-between truncate">
+            <span class="truncate">
+              {{ model.special.length > 0 ? model.special.join(', ') : "Select Special Instructions" }}
+            </span>
+            <ChevronsUpDown class="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent class="w-[300px] p-0 max-h-60 overflow-auto">
+          <Command>
+            <CommandInput placeholder="Search special instructions..." />
+            <CommandList>
+              <CommandGroup>
+                <CommandItem v-for="term in specialInstructions" :key="term" :value="term"
+                  @select="toggleSpecial(term)">
+                  <Check :class="cn('mr-2 h-4 w-4', model.special.includes(term) ? 'opacity-100' : 'opacity-0')" />
+                  {{ term }}
+                </CommandItem>
+              </CommandGroup>
+            </CommandList>
+          </Command>
+        </PopoverContent>
       </Popover>
     </div>
 
