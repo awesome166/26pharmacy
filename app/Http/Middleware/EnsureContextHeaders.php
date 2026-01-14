@@ -19,15 +19,29 @@ class EnsureContextHeaders
         $user = $request->user();
 
         if ($user) {
-            // Inject Tenant ID if missing and available on user
-            if (!$request->headers->has('X-Tenant-Id') && !empty($user->tenant_id)) {
-                $request->headers->set('X-Tenant-Id', $user->tenant_id);
+            // Inject Tenant ID
+            if (!$request->headers->has('X-Tenant-Id')) {
+                // Determine tenant from pivot. Prioritize primary.
+                $tenant = \Illuminate\Support\Facades\DB::table('tenant_user')
+                    ->where('user_id', $user->user_id) // using uuid
+                    ->orderByDesc('is_primary')
+                    ->first();
+
+                if ($tenant) {
+                    $request->headers->set('X-Tenant-Id', $tenant->tenant_id);
+                }
             }
 
-            // Inject Branch ID if missing and available on user
-            // Note: 'branch_id' column check is safer via property access/isset
-            if (!$request->headers->has('X-Branch-Id') && !empty($user->branch_id)) {
-                $request->headers->set('X-Branch-Id', $user->branch_id);
+            // Inject Branch ID
+            if (!$request->headers->has('X-Branch-Id')) {
+                // Similar logic for branch
+                $branch = \Illuminate\Support\Facades\DB::table('branch_user')
+                    ->where('user_id', $user->user_id)
+                    ->first();
+
+                if ($branch) {
+                    $request->headers->set('X-Branch-Id', $branch->branch_id);
+                }
             }
         }
 

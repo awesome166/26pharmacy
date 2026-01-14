@@ -22,9 +22,15 @@ use App\Http\Controllers\Api\v1\UserController;
 
 Route::prefix('v1')->group(function () {
 
-    // --- Public / Device Registration ---
+    // --- Public / Device Registration & Activation ---
     Route::post('/auth/login', [AuthController::class, 'login']);
     Route::post('/devices/register', [DeviceController::class, 'register']);
+
+    // Local Setup (Client Side)
+    Route::post('/setup/activate', [\App\Http\Controllers\Api\v1\SetupController::class, 'activate']);
+
+    // Cloud Activation (Server Side - For Mock/Dual Purpose)
+    Route::post('/activate', [\App\Http\Controllers\Api\v1\ActivationController::class, 'activate']);
 
     // --- Contextual Routes (Requires Authentication & Tenant/Branch Awareness) ---
     Route::middleware(['auth:sanctum'])->group(function () {
@@ -37,7 +43,7 @@ Route::prefix('v1')->group(function () {
         Route::delete('devices/{device}', [DeviceController::class, 'revoke']);
 
         // POS Operations
-        Route::apiResource('sales', SaleController::class)->only(['index', 'show']);
+        Route::apiResource('sales', SaleController::class)->only(['index', 'show', 'store']);
         Route::post('sales/finalize', [SaleController::class, 'finalizeSale']);
         Route::post('sales/reverse', [SaleController::class, 'reverseSale']);
 
@@ -50,8 +56,12 @@ Route::prefix('v1')->group(function () {
 
         // Sync & Offline Support
         Route::prefix('sync')->group(function () {
-            Route::post('/push', [SyncController::class, 'push']);
-            Route::post('/pull', [SyncController::class, 'pull']);
+            Route::post('/push', [SyncController::class, 'push']); // Trigger Local Push
+            Route::post('/pull', [SyncController::class, 'pull']); // Trigger Local Pull
+
+            // Cloud-side Endpoints (For completeness if this app acts as cloud)
+            Route::post('/receive', [\App\Http\Controllers\Api\v1\CloudSyncController::class, 'receiveBatch']);
+            Route::get('/serve', [\App\Http\Controllers\Api\v1\CloudSyncController::class, 'serveBatch']);
         });
 
         // Device Health

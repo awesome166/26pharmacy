@@ -2,11 +2,24 @@
 
 namespace App\Services;
 
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
+use App\Services\ProjectionService;
+
 /**
  * Service for synchronizing events between branch and cloud.
  */
 class SyncService
 {
+    protected $projectionService;
+    protected $cloudUrl;
+
+    public function __construct(ProjectionService $projectionService)
+    {
+        $this->projectionService = $projectionService;
+        $this->cloudUrl = config('services.cloud.url', env('CLOUD_URL', 'https://api.pharmacy-cloud.com'));
+    }
+
     /**
      * Push unsynced local events to the cloud.
      *
@@ -15,19 +28,35 @@ class SyncService
      */
     public function pushToCloud(string $branchId)
     {
-        $events = \Illuminate\Support\Facades\DB::table('event_ledger')
+        // 1. Get unsynced events
+        $events = DB::table('event_ledger')
             ->where('branch_id', $branchId)
-            ->whereNull('received_at_cloud')
+            ->whereNull('synced_at')
+            ->limit(50) // Batch limit
+            ->orderBy('local_sequence', 'asc')
             ->get();
 
-        foreach ($events as $event) {
-            // Mock API Call: Http::post('/cloud/sync', (array)$event)
-            \Illuminate\Support\Facades\DB::table('event_ledger')
-                ->where('event_id', $event->event_id)
-                ->update(['received_at_cloud' => now()]);
+        if ($events->isEmpty()) {
+            return 0;
         }
 
-        return $events->count();
+        // 2. Send to Cloud
+        // In reality, this should be authenticated (Sanctum/Oauth)
+        $response = Http::post("{$this->cloudUrl}/api/v1/sync/receive", [
+            'events' => $events->toArray()
+        ]);
+
+        if ($response->successful()) {
+            // 3. Mark as synced
+            $eventIds = $events->pluck('event_id');
+            DB::table('event_ledger')
+                ->whereIn('event_id', $eventIds)
+                ->update(['synced_at' => now()]);
+
+            return $events->count();
+        }
+
+        throw new \Exception("Sync Push Failed: " . $response->body());
     }
 
     /**
@@ -38,13 +67,79 @@ class SyncService
      */
     public function pullFromCloud(string $branchId)
     {
-        // Mock API Call: $cloudEvents = Http::get('/cloud/events?branch=' . $branchId)
-        $cloudEvents = [];
+        // 1. Get last known Global Sequence locally
+        $lastGlobal = DB::table('event_ledger')->max('global_sequence') ?? 0;
 
-        foreach ($cloudEvents as $event) {
-            // Logic to insert and respect sequence
+        // 2. Request new events from Cloud
+        $response = Http::get("{$this->cloudUrl}/api/v1/sync/serve", [
+            'after_global_sequence' => $lastGlobal,
+            'limit' => 100
+        ]);
+
+        if (!$response->successful()) {
+            throw new \Exception("Sync Pull Failed: " . $response->body());
         }
 
-        return count($cloudEvents);
+        $cloudEvents = $response->json('events');
+        $processed = 0;
+
+        // 3. Process Incoming
+        foreach ($cloudEvents as $eventData) {
+            $processed += $this->processIncomingEvent((array)$eventData);
+        }
+
+        return $processed;
+    }
+
+    /**
+     * Insert and Project a single incoming event (Replay logic).
+     */
+    protected function processIncomingEvent(array $event)
+    {
+        // Check if we already have it (idempotency)
+        $exists = DB::table('event_ledger')->where('event_id', $event['event_id'])->exists();
+        if ($exists) {
+            // Check if we need to update global_sequence if it was null locally
+            if (isset($event['global_sequence'])) {
+                DB::table('event_ledger')
+                    ->where('event_id', $event['event_id'])
+                    ->whereNull('global_sequence')
+                    ->update(['global_sequence' => $event['global_sequence'], 'synced_at' => now()]);
+            }
+            return 0;
+        }
+
+        // It is a NEW event (from another branch or cloud)
+        // Convert array payload back to json if needed, or insert assumes array maps to columns
+        // Laravel DB insert needs explicit json encoding for array columns if raw array passed
+        if (is_array($event['event_payload'])) {
+            $event['event_payload'] = json_encode($event['event_payload']);
+        }
+
+        DB::table('event_ledger')->insert([
+            'event_id' => $event['event_id'],
+            'tenant_id' => $event['tenant_id'],
+            'branch_id' => $event['branch_id'],
+            'device_id' => $event['device_id'],
+            'actor_user_id' => $event['actor_user_id'] ?? null,
+            'event_type' => $event['event_type'],
+            'event_version' => $event['event_version'],
+            'event_payload' => $event['event_payload'],
+            'local_sequence' => $event['local_sequence'],
+            'global_sequence' => $event['global_sequence'] ?? null,
+            'event_time_utc' => $event['event_time_utc'],
+            'event_hash' => $event['event_hash'],
+            'received_at_cloud' => $event['received_at_cloud'] ?? null,
+            'synced_at' => now() // It came from cloud, so it is synced
+        ]);
+
+        // REPLAY: Trigger Projection
+        // We cast generic object to structure expected by Projector if needed
+        $eventObj = (object)$event;
+        $eventObj->event_payload = json_decode($event['event_payload'], true);
+
+        $this->projectionService->projectEvent($eventObj);
+
+        return 1;
     }
 }

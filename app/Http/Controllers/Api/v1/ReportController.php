@@ -22,7 +22,7 @@ class ReportController extends Controller
      */
     public function dailySales(Request $request)
     {
-        $branchId = $request->header('X-Branch-Id');
+        $branchId = $request->header('X-Branch-Id') ?? $request->user()->branch_id;
         $date = $request->query('date', now()->toDateString());
 
         $summary = $this->reportingService->getDailySummary($branchId, $date);

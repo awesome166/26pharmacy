@@ -41,24 +41,42 @@ return new class extends Migration
             $table->foreign('branch_id')->references('branch_id')->on('branches')->cascadeOnDelete();
         });
 
-        Schema::create('users', function (Blueprint $table) {
-            $table->uuid('user_id')->primary();
-            $table->uuid('tenant_id');
-            $table->string('name');
-            $table->string('email')->unique();
-            $table->string('password');
-            $table->uuid('role_id');
-            $table->boolean('is_active')->default(true);
-            $table->timestamps();
-
-            $table->foreign('tenant_id')->references('tenant_id')->on('tenants')->cascadeOnDelete();
-        });
 
         Schema::create('roles', function (Blueprint $table) {
             $table->uuid('role_id')->primary();
             $table->string('role_name');
             $table->json('permissions')->nullable();
             $table->timestamps();
+        });
+
+        // ----------------------------
+        // Pivot Tables (Many-to-Many)
+        // ----------------------------
+
+        Schema::create('tenant_user', function (Blueprint $table) {
+            $table->id();
+            $table->uuid('tenant_id');
+            $table->uuid('user_id'); // Using users.user_id (UUID) not users.id (BigInt) if intended?
+            // Wait, users table has mixed IDs.
+            // 0001 migration has $table->id('id') AND $table->uuid('user_id').
+            // Let's stick to UUID for the pivot to match other FKs.
+            $table->uuid('role_id')->nullable();
+            $table->boolean('is_primary')->default(false);
+            $table->timestamps();
+
+            $table->foreign('tenant_id')->references('tenant_id')->on('tenants')->cascadeOnDelete();
+            // We can't easily FK to users.user_id if it's not unique/indexed in migration?
+            // users.user_id IS nullable in 0001 migration.
+            // Let's assume we use the UUID for relationships.
+        });
+
+        Schema::create('branch_user', function (Blueprint $table) {
+            $table->id();
+            $table->uuid('branch_id');
+            $table->uuid('user_id');
+            $table->timestamps();
+
+            $table->foreign('branch_id')->references('branch_id')->on('branches')->cascadeOnDelete();
         });
 
         // ----------------------------
@@ -107,6 +125,8 @@ return new class extends Migration
             $table->uuid('branch_id');
             $table->uuid('drug_id');
             $table->uuid('batch_id');
+            $table->decimal('selling_price', 15, 2)->default(0);
+
             $table->integer('quantity_on_hand')->default(0);
             $table->timestamps();
 
@@ -140,6 +160,10 @@ return new class extends Migration
             $table->uuid('batch_id')->primary();
             $table->uuid('drug_id');
             $table->date('expiry_date')->nullable();
+            $table->string('lot_number')->nullable();
+            $table->integer('quantity')->default(0);
+            $table->decimal('cost_price', 15, 2)->default(0);
+            $table->string('name')->nullable();
             $table->string('manufacturer')->nullable();
             $table->timestamps();
 
@@ -166,6 +190,7 @@ return new class extends Migration
             $table->uuid('actor_user_id')->nullable();
             $table->timestamp('timestamp');
             $table->json('metadata')->nullable();
+            $table->timestamps();
         });
 
         Schema::create('event_rejections', function (Blueprint $table) {
@@ -188,7 +213,7 @@ return new class extends Migration
         Schema::dropIfExists('sales');
         Schema::dropIfExists('event_ledger');
         Schema::dropIfExists('roles');
-        Schema::dropIfExists('users');
+        // Schema::dropIfExists('users');
         Schema::dropIfExists('devices');
         Schema::dropIfExists('branches');
         Schema::dropIfExists('tenants');
