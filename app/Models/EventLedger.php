@@ -7,6 +7,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class EventLedger extends Model
 {
+    use \AbacPermissions\Tenancy\UsesTenant;
+
+
     protected $primaryKey = 'event_id';
     public $incrementing = false;
     protected $keyType = 'string';
@@ -32,15 +35,6 @@ class EventLedger extends Model
         'received_at_cloud' => 'datetime',
     ];
 
-    public function tenant(): BelongsTo
-    {
-        return $this->belongsTo(Tenant::class, 'tenant_id', 'tenant_id');
-    }
-
-    public function branch(): BelongsTo
-    {
-        return $this->belongsTo(Branch::class, 'branch_id', 'branch_id');
-    }
 
     public function device(): BelongsTo
     {

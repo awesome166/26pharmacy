@@ -2,8 +2,8 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\v1\AuthController;
-use App\Http\Controllers\Api\v1\TenantController;
-use App\Http\Controllers\Api\v1\BranchController;
+// use App\Http\Controllers\Api\v1\TenantController;
+// use App\Http\Controllers\Api\v1\BranchController;
 use App\Http\Controllers\Api\v1\DeviceController;
 use App\Http\Controllers\Api\v1\SaleController;
 use App\Http\Controllers\Api\v1\InventoryController;
@@ -36,9 +36,9 @@ Route::prefix('v1')->group(function () {
     Route::middleware(['auth:sanctum'])->group(function () {
 
         // Identity & Trust
-        Route::apiResource('tenants', TenantController::class);
-        Route::get('tenants/{tenant}/branches', [BranchController::class, 'index']); // Specific for listing by tenant
-        Route::apiResource('branches', BranchController::class);
+        // Route::apiResource('tenants', TenantController::class);
+        // Route::get('tenants/{tenant}/branches', [BranchController::class, 'index']); // Specific for listing by tenant
+        // Route::apiResource('branches', BranchController::class);
         Route::apiResource('users', UserController::class);
         Route::delete('devices/{device}', [DeviceController::class, 'revoke']);
 

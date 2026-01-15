@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class AuditTrail extends Model
 {
+    use \AbacPermissions\Tenancy\UsesTenant;
+
     protected $primaryKey = 'audit_id';
     public $incrementing = false;
     protected $keyType = 'string';

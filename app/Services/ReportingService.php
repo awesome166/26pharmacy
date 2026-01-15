@@ -10,20 +10,20 @@ class ReportingService
     /**
      * Generate a daily financial summary for a branch.
      *
-     * @param string $branchId
+     * @param string $accountid
      * @param string $date
      * @return object
      */
-    public function getDailySummary(string $branchId, string $date)
+    public function getDailySummary(string $accountid, string $date)
     {
         $summary = \Illuminate\Support\Facades\DB::table('financial_day_summaries')
-            ->where('branch_id', $branchId)
+            ->where('account_id', $accountid)
             ->where('day', $date)
             ->first();
 
         if (!$summary) {
             $totals = \Illuminate\Support\Facades\DB::table('sales')
-                ->where('branch_id', $branchId)
+                ->where('account_id', $accountid)
                 ->whereDate('finalized_at', $date)
                 ->selectRaw('SUM(total_amount) as gross_sales, SUM(tax_amount) as tax_collected')
                 ->first();
@@ -31,7 +31,7 @@ class ReportingService
             $id = \Illuminate\Support\Str::uuid();
             \Illuminate\Support\Facades\DB::table('financial_day_summaries')->insert([
                 'summary_id' => $id,
-                'branch_id' => $branchId,
+                'account_id' => $accountid,
                 'day' => $date,
                 'gross_sales' => $totals->gross_sales ?? 0,
                 'tax_collected' => $totals->tax_collected ?? 0,

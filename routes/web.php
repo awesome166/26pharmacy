@@ -3,8 +3,8 @@
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use Laravel\Fortify\Features;
-use App\Http\Controllers\Api\v1\TenantController;
-use App\Http\Controllers\Api\v1\BranchController;
+// use App\Http\Controllers\Api\v1\TenantController;
+// use App\Http\Controllers\Api\v1\BranchController;
 use App\Http\Controllers\Api\v1\UserController;
 use App\Http\Controllers\Api\v1\SaleController;
 use App\Http\Controllers\Api\v1\InventoryController;
@@ -43,8 +43,8 @@ Route::prefix('app')->group(function () {
 Route::middleware(['auth'])->prefix('app')->group(function () {
 
     // Identity & Trust
-    Route::resource('tenants', TenantController::class);
-    Route::resource('branches', BranchController::class);
+    // Route::resource('tenants', TenantController::class);
+    // Route::resource('branches', BranchController::class);
     Route::resource('users', UserController::class);
 
     Route::resource('drugs', DrugController::class);

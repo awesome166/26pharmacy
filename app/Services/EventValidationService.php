@@ -27,13 +27,13 @@ class EventValidationService
     /**
      * Check for sequence gaps in local events.
      *
-     * @param string $branchId
+     * @param string $accountid
      * @return bool
      */
-    public function checkSequenceIntegrity(string $branchId)
+    public function checkSequenceIntegrity(string $accountid)
     {
         $sequences = \Illuminate\Support\Facades\DB::table('event_ledger')
-            ->where('branch_id', $branchId)
+            ->where('account_id', $accountid)
             ->orderBy('local_sequence', 'asc')
             ->pluck('local_sequence')
             ->toArray();

@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Drug extends Model
 {
+    use \AbacPermissions\Tenancy\UsesTenant;
+
     protected $primaryKey = 'drug_id';
     public $incrementing = false;
     protected $keyType = 'string';

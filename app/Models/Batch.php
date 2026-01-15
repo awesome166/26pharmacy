@@ -8,6 +8,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Batch extends Model
 {
+    use \AbacPermissions\Tenancy\UsesTenant;
+
     protected $primaryKey = 'batch_id';
     public $incrementing = false;
     protected $keyType = 'string';

@@ -14,23 +14,22 @@ class UserService
      * @param array $data
      * @return object
      */
-    public function createUser(string $tenantId, array $data)
-    {
-        $id = \Illuminate\Support\Str::uuid();
-        \Illuminate\Support\Facades\DB::table('users')->insert([
-            'id' => $id,
-            'tenant_id' => $tenantId,
-            'name' => $data['name'],
-            'email' => $data['email'],
-            'password' => \Illuminate\Support\Facades\Hash::make($data['password']),
-            'role_id' => $data['role_id'],
-            'is_active' => true,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+    // public function createUser(string $tenantId, array $data)
+    // {
+    //     $id = \Illuminate\Support\Str::uuid();
+    //     \Illuminate\Support\Facades\DB::table('users')->insert([
+    //         'id' => $id,
+    //         'name' => $data['name'],
+    //         'email' => $data['email'],
+    //         'password' => \Illuminate\Support\Facades\Hash::make($data['password']),
 
-        return (object) ['id' => $id];
-    }
+    //         'is_active' => true,
+    //         'created_at' => now(),
+    //         'updated_at' => now(),
+    //     ]);
+
+    //     return (object) ['id' => $id];
+    // }
 
     /**
      * Update user information.

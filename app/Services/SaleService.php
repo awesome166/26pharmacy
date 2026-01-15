@@ -25,16 +25,22 @@ class SaleService
     {
         try {
             return DB::transaction(function () use ($saleData) {
-                $saleId = $saleData['sale_id'] ?? Str::uuid()->toString();
+                $saleId = $saleData['id'] ?? Str::uuid()->toString();
 
                 // 1. Create Sale Header (Read Model)
                 $sale = \App\Models\Sale::create([
-                    'sale_id' => $saleId,
-                    'tenant_id' => $saleData['tenant_id'],
-                    'branch_id' => $saleData['branch_id'],
-                    'total_amount' => $saleData['total_amount'],
+                    'id' => $saleId,
+                    'account_id' => $saleData['account_id'],
+                    'user_id' => $saleData['user_id'] ?? null,
+                    'customer_name' => $saleData['customer_name'] ?? null,
+                    'customer_dob' => $saleData['customer_dob'] ?? null,
+                    'customer_phone' => $saleData['customer_phone'] ?? null,
+                    'customer_email' => $saleData['customer_email'] ?? null,
+                    'subtotal_amount' => $saleData['subtotal_amount'] ?? 0,
                     'tax_amount' => $saleData['tax_amount'] ?? 0,
-                    'payment_type' => $saleData['payment_type'],
+                    'total_amount' => $saleData['total_amount'],
+                    'payment_type' => $saleData['payment_type'] ?? null,
+                    'payment_metadata' => $saleData['payment_metadata'] ?? null,
                     'finalized_at' => now(),
                 ]);
 
@@ -42,26 +48,23 @@ class SaleService
                 foreach ($saleData['items'] as $item) {
                     // Persistent Sale Item
                     \App\Models\SaleItem::create([
+                        'id' => $item['id'] ?? Str::uuid()->toString(),
                         'sale_id' => $saleId,
                         'batch_id' => $item['batch_id'],
+                        'inventory_id' => $item['inventory_id'],
+                        'drug_id' => $item['drug_id'],
                         'quantity' => $item['quantity'],
                         'price' => $item['price'],
-                        'total' => $item['quantity'] * $item['price'],
+                        'line_total' => $item['quantity'] * $item['price'],
+                        'tax_amount' => $item['tax_amount'] ?? 0,
+                        'requires_prescription' => $item['requires_prescription'] ?? false,
+                        'prescription_metadata' => $item['prescription_metadata'] ?? null,
                         'dosage_instructions' => $item['dosage_instructions'] ?? null,
                     ]);
 
                     // Decrement Stock (Inventory Table)
-                    // Inventory is keyed by branch + batch + drug.
-                    // Assuming we can find it by batch_id + branch_id.
-                    // Migration: inventory has uuid primary key, but unique index on branch+drug?
-                    // Actually inventory migration: index(['branch_id', 'drug_id']);
-                    // It doesn't enforce uniqueness on batch? Wait, let's check platform migration again.
-                    // Schema::create('inventory', ... $table->uuid('batch_id'); ...
-                    // Ideally, we decrement where batch_id = X and branch_id = Y.
-
                     DB::table('inventory')
-                        ->where('branch_id', $saleData['branch_id'])
-                        ->where('batch_id', $item['batch_id']) // specific batch at this branch
+                        ->where('id', $item['inventory_id'])
                         ->decrement('quantity_on_hand', $item['quantity']);
                 }
 
@@ -77,8 +80,7 @@ class SaleService
 
                 // 4. Emit 'SALE_FINALIZED' Event
                 $event = $this->ledger->emitEvent([
-                    'tenant_id' => $saleData['tenant_id'],
-                    'branch_id' => $saleData['branch_id'],
+                    'account_id' => $saleData['account_id'],
                     'device_id' => $saleData['device_id'] ?? 'unknown',
                     'actor_user_id' => $saleData['user_id'] ?? null,
                     'event_type' => 'SALE_FINALIZED',
@@ -98,18 +100,18 @@ class SaleService
      */
     public function getSale(string $saleId)
     {
-        return DB::table('sales')->where('sale_id', $saleId)->first();
+        return DB::table('sales')->where('id', $saleId)->first();
     }
 
     /**
      * Get paginated sales for a branch.
      */
-    public function getAllSales(?string $branchId = null, int $perPage = 15)
+    public function getAllSales(?string $accountId = null, int $perPage = 15)
     {
         $query = DB::table('sales')->orderBy('finalized_at', 'desc');
 
-        if ($branchId) {
-            $query->where('branch_id', $branchId);
+        if ($accountId) {
+            $query->where('account_id', $accountId);
         }
 
         return $query->paginate($perPage);

@@ -19,10 +19,10 @@ class UserController extends Controller
 
     public function index(Request $request)
     {
-        $users = $this->userService->getAllUsers();
+        $users = \App\Models\User::with(['accounts', 'permissions'])->paginate(15);
 
         if ($request->wantsJson()) {
-            return response()->json(['data' => $users]);
+            return \App\Http\Resources\UserResource::collection($users);
         }
 
         return Inertia::render('Users/Index', ['users' => $users]);
@@ -32,14 +32,14 @@ class UserController extends Controller
     {
         // For brevity, using simple validation here; usually should use a FormRequest
         $data = $request->validate([
-            'tenant_id' => 'required|uuid',
+            'account_id' => 'required|uuid',
             'name' => 'required|string',
             'email' => 'required|email|unique:users,email',
             'password' => 'required|string|min:8',
             'role_id' => 'required|uuid'
         ]);
 
-        $user = $this->userService->createUser($data['tenant_id'], $data);
+        $user = $this->userService->createUser($data['account_id'], $data);
 
         if ($request->wantsJson()) {
             return response()->json(['data' => $user], 201);
@@ -50,7 +50,7 @@ class UserController extends Controller
 
     public function show(string $userId, Request $request)
     {
-        $user = $this->userService->getUser($userId);
+        $user = \App\Models\User::with(['accounts', 'permissions'])->find($userId);
 
         if (!$user) {
             if ($request->wantsJson()) {
@@ -60,7 +60,7 @@ class UserController extends Controller
         }
 
         if ($request->wantsJson()) {
-            return response()->json(['data' => $user]);
+            return new \App\Http\Resources\UserResource($user);
         }
 
         return Inertia::render('Users/Show', ['user' => $user]);

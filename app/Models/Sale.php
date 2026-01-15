@@ -8,6 +8,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class Sale extends Model
 {
     use \App\AccessControl\Traits\BelongsToTenant;
+        use \AbacPermissions\Tenancy\UsesTenant;
+
 
     protected $primaryKey = 'sale_id';
     public $incrementing = false;
@@ -15,8 +17,7 @@ class Sale extends Model
 
     protected $fillable = [
         'sale_id',
-        'tenant_id',
-        'branch_id',
+        'account_id',
         'total_amount',
         'tax_amount',
         'payment_type',
@@ -29,15 +30,7 @@ class Sale extends Model
         'finalized_at' => 'datetime',
     ];
 
-    public function tenant(): BelongsTo
-    {
-        return $this->belongsTo(Tenant::class, 'tenant_id', 'tenant_id');
-    }
 
-    public function branch(): BelongsTo
-    {
-        return $this->belongsTo(Branch::class, 'branch_id', 'branch_id');
-    }
 
     public function items()
     {

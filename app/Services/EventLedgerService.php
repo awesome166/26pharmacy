@@ -17,7 +17,7 @@ class EventLedgerService
     {
         return \Illuminate\Support\Facades\DB::transaction(function () use ($eventData) {
             $lastEvent = \Illuminate\Support\Facades\DB::table('event_ledger')
-                ->where('branch_id', $eventData['branch_id'])
+                ->where('account_id', $eventData['account_id'])
                 ->orderBy('local_sequence', 'desc')
                 ->first();
 
@@ -29,8 +29,7 @@ class EventLedgerService
 
             \Illuminate\Support\Facades\DB::table('event_ledger')->insert([
                 'event_id' => $id,
-                'tenant_id' => $eventData['tenant_id'],
-                'branch_id' => $eventData['branch_id'],
+                'account_id' => $eventData['account_id'],
                 'device_id' => $eventData['device_id'],
                 'actor_user_id' => $eventData['actor_user_id'] ?? null,
                 'event_type' => $eventData['event_type'],
@@ -66,14 +65,14 @@ class EventLedgerService
     /**
      * Retrieve events for a specific branch.
      *
-     * @param string $branchId
+     * @param string $accountid
      * @param int $sinceSequence
      * @return \Illuminate\Support\Collection
      */
-    public function getEvents(string $branchId, int $sinceSequence = 0)
+    public function getEvents(string $accountid, int $sinceSequence = 0)
     {
         return \Illuminate\Support\Facades\DB::table('event_ledger')
-            ->where('branch_id', $branchId)
+            ->where('account_id', $accountid)
             ->where('local_sequence', '>', $sinceSequence)
             ->orderBy('local_sequence', 'asc')
             ->get();

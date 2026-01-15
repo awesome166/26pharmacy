@@ -4,8 +4,98 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "1b960984f5c1c58b6306caf6fcac6b44",
+    "content-hash": "f3509661f01038913a9672b93d5850ce",
     "packages": [
+        {
+            "name": "abacpermissions/abacpermissions",
+            "version": "v1.1.4",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/awesome166/laravel_abac.git",
+                "reference": "25da8dc1c2db3eb8dfd4b2a19304e1587b513785"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/awesome166/laravel_abac/zipball/25da8dc1c2db3eb8dfd4b2a19304e1587b513785",
+                "reference": "25da8dc1c2db3eb8dfd4b2a19304e1587b513785",
+                "shasum": ""
+            },
+            "require": {
+                "illuminate/auth": "^9.0|^10.0|^11.0|^12.0",
+                "illuminate/console": "^9.0|^10.0|^11.0|^12.0",
+                "illuminate/database": "^9.0|^10.0|^11.0|^12.0",
+                "illuminate/filesystem": "^9.0|^10.0|^11.0|^12.0",
+                "illuminate/http": "^9.0|^10.0|^11.0|^12.0",
+                "illuminate/support": "^9.0|^10.0|^11.0|^12.0",
+                "php": "^8.2"
+            },
+            "require-dev": {
+                "mockery/mockery": "^1.6",
+                "orchestra/testbench": "^7.0|^8.0|^9.0",
+                "pestphp/pest": "^2.0|^3.0",
+                "pestphp/pest-plugin-laravel": "^2.0|^3.0",
+                "phpstan/phpstan": "^1.10"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "providers": [
+                        "AbacPermissions\\AbacPermissionsServiceProvider"
+                    ],
+                    "aliases": {
+                        "AbacPermissions": "AbacPermissions\\Facades\\AbacPermissions"
+                    }
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "AbacPermissions\\": "src/"
+                }
+            },
+            "autoload-dev": {
+                "psr-4": {
+                    "AbacPermissions\\Tests\\": "tests/"
+                }
+            },
+            "scripts": {
+                "test": [
+                    "pest"
+                ],
+                "test-coverage": [
+                    "pest --coverage"
+                ],
+                "analyse": [
+                    "phpstan analyse"
+                ],
+                "post-autoload-dump": [
+                    "@php ./vendor/bin/testbench package:discover"
+                ]
+            },
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Joey Mantey",
+                    "email": "joeymantey@gmail.com"
+                }
+            ],
+            "description": "SaaS multi-tenancy and RBAC/ABAC (Attribute-Based Access Control) system for Laravel",
+            "keywords": [
+                "abac",
+                "access-control",
+                "laravel",
+                "multi-tenancy",
+                "permissions",
+                "rbac",
+                "saas"
+            ],
+            "support": {
+                "source": "https://github.com/awesome166/laravel_abac/tree/v1.1.4",
+                "issues": "https://github.com/awesome166/laravel_abac/issues"
+            },
+            "time": "2026-01-14T23:23:26+00:00"
+        },
         {
             "name": "bacon/bacon-qr-code",
             "version": "v3.0.3",

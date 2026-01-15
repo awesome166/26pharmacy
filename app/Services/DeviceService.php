@@ -10,16 +10,16 @@ class DeviceService
     /**
      * Register a new device to a branch.
      *
-     * @param string $branchId
+     * @param string $accountid
      * @param array $data
      * @return object
      */
-    public function registerDevice(string $branchId, array $data)
+    public function registerDevice(string $accountid, array $data)
     {
         $id = \Illuminate\Support\Str::uuid();
         \Illuminate\Support\Facades\DB::table('devices')->insert([
             'device_id' => $id,
-            'branch_id' => $branchId,
+            'account_id' => $accountid,
             'device_name' => $data['device_name'] ?? null,
             'trust_status' => 'active',
             'created_at' => now(),

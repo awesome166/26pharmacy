@@ -70,15 +70,15 @@ const formatDate = (dateString) => {
                                 </tr>
                             </thead>
                             <tbody class="[&_tr:last-child]:border-0">
-                                <tr v-for="sale in sales.data" :key="sale.sale_id"
+                                <tr v-for="sale in sales.data" :key="sale.id"
                                     class="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted">
-                                    <td class="p-4 align-middle font-medium">{{ sale.sale_id.substring(0, 8) }}...</td>
+                                    <td class="p-4 align-middle font-medium">{{ sale.id.substring(0, 8) }}...</td>
                                     <td class="p-4 align-middle">{{ formatDate(sale.finalized_at) }}</td>
                                     <td class="p-4 align-middle capitalize">{{ sale.payment_type || 'N/A' }}</td>
                                     <td class="p-4 align-middle text-right">{{ formatCurrency(sale.total_amount) }}</td>
                                     <td class="p-4 align-middle text-right">
                                         <Button variant="outline" size="sm" as-child>
-                                            <a :href="`/app/sales/${sale.sale_id}`">View</a>
+                                            <a :href="`/app/sales/${sale.id}`">View</a>
                                         </Button>
                                     </td>
                                 </tr>

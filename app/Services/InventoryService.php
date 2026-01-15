@@ -18,12 +18,12 @@ class InventoryService
     /**
      * Get paginated stock levels for a branch.
      */
-    public function getStockLevels(string $branchId, int $perPage = 15)
+    public function getStockLevels(string $accountId, int $perPage = 15)
     {
         return DB::table('inventory')
             ->join('drugs', 'inventory.drug_id', '=', 'drugs.drug_id')
             ->join('batches', 'inventory.batch_id', '=', 'batches.batch_id')
-            ->where('inventory.branch_id', $branchId)
+            ->where('inventory.account_id', $accountId)
             ->select(
                 'inventory.*',
                 'drugs.name as drug_name',
@@ -57,7 +57,7 @@ class InventoryService
     /**
      * Adjust stock level (Emit Event).
      */
-    public function adjustStock(string $branchId, string $batchId, int $quantityChange, string $reason, array $context)
+    public function adjustStock(string $accountId, string $batchId, int $quantityChange, string $reason, array $context)
     {
         $payload = [
             'batch_id' => $batchId,
@@ -67,8 +67,7 @@ class InventoryService
         ];
 
         $this->ledger->emitEvent([
-            'tenant_id' => $context['tenant_id'],
-            'branch_id' => $branchId,
+            'account_id' => $accountId,
             'device_id' => $context['device_id'] ?? 'unknown',
             'actor_user_id' => $context['user_id'] ?? null,
             'event_type' => 'STOCK_ADJUSTED',

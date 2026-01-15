@@ -23,14 +23,14 @@ class SyncService
     /**
      * Push unsynced local events to the cloud.
      *
-     * @param string $branchId
+     * @param string $accountId
      * @return int Number of events synced
      */
-    public function pushToCloud(string $branchId)
+    public function pushToCloud(string $accountId)
     {
         // 1. Get unsynced events
         $events = DB::table('event_ledger')
-            ->where('branch_id', $branchId)
+            ->where('account_id', $accountId)
             ->whereNull('synced_at')
             ->limit(50) // Batch limit
             ->orderBy('local_sequence', 'asc')
@@ -48,9 +48,9 @@ class SyncService
 
         if ($response->successful()) {
             // 3. Mark as synced
-            $eventIds = $events->pluck('event_id');
+            $eventIds = $events->pluck('id');
             DB::table('event_ledger')
-                ->whereIn('event_id', $eventIds)
+                ->whereIn('id', $eventIds)
                 ->update(['synced_at' => now()]);
 
             return $events->count();
@@ -60,12 +60,12 @@ class SyncService
     }
 
     /**
-     * Pull new events from the cloud for a specific branch.
+     * Pull new events from the cloud for a specific account.
      *
-     * @param string $branchId
+     * @param string $accountId
      * @return int Number of events pulled
      */
-    public function pullFromCloud(string $branchId)
+    public function pullFromCloud(string $accountId)
     {
         // 1. Get last known Global Sequence locally
         $lastGlobal = DB::table('event_ledger')->max('global_sequence') ?? 0;
@@ -97,12 +97,12 @@ class SyncService
     protected function processIncomingEvent(array $event)
     {
         // Check if we already have it (idempotency)
-        $exists = DB::table('event_ledger')->where('event_id', $event['event_id'])->exists();
+        $exists = DB::table('event_ledger')->where('id', $event['id'])->exists();
         if ($exists) {
             // Check if we need to update global_sequence if it was null locally
             if (isset($event['global_sequence'])) {
                 DB::table('event_ledger')
-                    ->where('event_id', $event['event_id'])
+                    ->where('id', $event['id'])
                     ->whereNull('global_sequence')
                     ->update(['global_sequence' => $event['global_sequence'], 'synced_at' => now()]);
             }
@@ -117,19 +117,20 @@ class SyncService
         }
 
         DB::table('event_ledger')->insert([
-            'event_id' => $event['event_id'],
-            'tenant_id' => $event['tenant_id'],
-            'branch_id' => $event['branch_id'],
+            'id' => $event['id'],
+            'account_id' => $event['account_id'],
             'device_id' => $event['device_id'],
             'actor_user_id' => $event['actor_user_id'] ?? null,
             'event_type' => $event['event_type'],
-            'event_version' => $event['event_version'],
+            'event_category' => $event['event_category'] ?? null,
+            'event_version' => $event['event_version'] ?? 1,
             'event_payload' => $event['event_payload'],
             'local_sequence' => $event['local_sequence'],
-            'global_sequence' => $event['global_sequence'] ?? null,
             'event_time_utc' => $event['event_time_utc'],
             'event_hash' => $event['event_hash'],
             'received_at_cloud' => $event['received_at_cloud'] ?? null,
+            'metadata' => $event['metadata'] ?? null,
+            'global_sequence' => $event['global_sequence'] ?? null,
             'synced_at' => now() // It came from cloud, so it is synced
         ]);
 

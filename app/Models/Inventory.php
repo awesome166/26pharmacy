@@ -7,6 +7,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Inventory extends Model
 {
+    use \AbacPermissions\Tenancy\UsesTenant;
+
+
     use \App\AccessControl\Traits\BelongsToTenant;
 
     protected $primaryKey = 'inventory_id';
@@ -15,23 +18,14 @@ class Inventory extends Model
 
     protected $fillable = [
         'inventory_id',
-        'tenant_id',
-        'branch_id',
+        'account_id',
         'drug_id',
         'batch_id',
         'selling_price',
         'quantity_on_hand',
     ];
 
-    public function tenant(): BelongsTo
-    {
-        return $this->belongsTo(Tenant::class, 'tenant_id', 'tenant_id');
-    }
 
-    public function branch(): BelongsTo
-    {
-        return $this->belongsTo(Branch::class, 'branch_id', 'branch_id');
-    }
 
     public function drug(): BelongsTo
     {

@@ -20,15 +20,19 @@ return Application::configure(basePath: dirname(__DIR__))
             HandleAppearance::class,
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,
-            \App\Http\Middleware\EnsureContextHeaders::class,
+            \AbacPermissions\Http\Middleware\DetectAbacTenant::class,
+            // \AbacPermissions\Http\Middleware\AppendPermissions::class,
+
         ]);
 
         $middleware->api(append: [
-            \App\Http\Middleware\EnsureContextHeaders::class,
+            \AbacPermissions\Http\Middleware\DetectAbacTenant::class,
+            // \AbacPermissions\Http\Middleware\AppendPermissions::class,
+
         ]);
 
         $middleware->alias([
-            'permission' => \App\AccessControl\Middleware\EnsurePermission::class,
+            // 'permission' => \App\AccessControl\Middleware\EnsurePermission::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

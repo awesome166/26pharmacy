@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class EventRejection extends Model
 {
+
+
     protected $primaryKey = 'event_id';
     public $incrementing = false;
     protected $keyType = 'string';

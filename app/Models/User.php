@@ -11,6 +11,8 @@ use Laravel\Fortify\TwoFactorAuthenticatable;
 
 class User extends Authenticatable
 {
+     use \AbacPermissions\Traits\HasAbac;
+
     /** @use HasFactory<\Database\Factories\UserFactory> */
     use HasFactory, Notifiable, TwoFactorAuthenticatable;
 
@@ -31,25 +33,7 @@ class User extends Authenticatable
         'is_active',
     ];
 
-    protected $appends = [
-        'all_permissions',
-    ];
-
-    protected $with = [
-        'tenants',
-        'branches',
-        'roles',
-    ];
-
-    public function tenants()
-    {
-        return $this->belongsToMany(Tenant::class, 'tenant_user', 'user_id', 'tenant_id');
-    }
-
-    public function branches()
-    {
-        return $this->belongsToMany(Branch::class, 'branch_user', 'user_id', 'branch_id');
-    }
+    protected $with = ['accounts'];
 
     /**
      * The attributes that should be hidden for serialization.
@@ -78,39 +62,39 @@ class User extends Authenticatable
         ];
     }
 
-    // AccessControl Roles & Permissions
-    public function roles()
-    {
-        return $this->belongsToMany(\App\AccessControl\Models\Role::class, 'user_roles', 'user_id', 'role_id');
-    }
+    // // AccessControl Roles & Permissions
+    // public function roles()
+    // {
+    //     return $this->belongsToMany(\App\AccessControl\Models\Role::class, 'user_roles', 'user_id', 'role_id');
+    // }
 
-    public function permissions()
-    {
-        return $this->belongsToMany(\App\AccessControl\Models\Permission::class, 'user_permissions', 'user_id', 'permission_id');
-    }
+    // public function permissions()
+    // {
+    //     return $this->belongsToMany(\App\AccessControl\Models\Permission::class, 'user_permissions', 'user_id', 'permission_id');
+    // }
 
-    public function getAllPermissionsAttribute()
-    {
-        return $this->getCachedPermissionsAttribute();
-    }
+    // public function getAllPermissionsAttribute()
+    // {
+    //     return $this->getCachedPermissionsAttribute();
+    // }
 
-    public function getCachedPermissionsAttribute()
-    {
-        return \Illuminate\Support\Facades\Cache::rememberForever("permissions_user_{$this->id}", function () {
-            return $this->allPermissions();
-        });
-    }
+    // public function getCachedPermissionsAttribute()
+    // {
+    //     return \Illuminate\Support\Facades\Cache::rememberForever("permissions_user_{$this->id}", function () {
+    //         return $this->allPermissions();
+    //     });
+    // }
 
-    public function allPermissions()
-    {
-        $direct = $this->permissions->pluck('name');
-        $fromRoles = $this->roles->flatMap->permissions->pluck('name');
+    // public function allPermissions()
+    // {
+    //     $direct = $this->permissions->pluck('name');
+    //     $fromRoles = $this->roles->flatMap->permissions->pluck('name');
 
-        return $direct->merge($fromRoles)->unique()->values();
-    }
+    //     return $direct->merge($fromRoles)->unique()->values();
+    // }
 
-    public function hasPermissionTo($permission)
-    {
-        return $this->all_permissions->contains($permission);
-    }
+    // public function hasPermissionTo($permission)
+    // {
+    //     return $this->all_permissions->contains($permission);
+    // }
 }

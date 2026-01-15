@@ -2,6 +2,7 @@
 import NavFooter from '@/components/NavFooter.vue';
 import NavMain from '@/components/NavMain.vue';
 import NavUser from '@/components/NavUser.vue';
+import AccountSwitcher from '@/components/AccountSwitcher.vue';
 import {
     Sidebar,
     SidebarContent,
@@ -13,7 +14,7 @@ import {
 } from '@/components/ui/sidebar';
 import { dashboard } from '@/routes';
 import { type NavItem } from '@/types';
-import { Link } from '@inertiajs/vue3';
+import { Link, usePage } from '@inertiajs/vue3';
 import { BookOpen, Folder, LayoutGrid, ShoppingCart, Package, FileText, ClipboardList } from 'lucide-vue-next';
 import AppLogo from './AppLogo.vue';
 
@@ -67,6 +68,9 @@ const footerNavItems: NavItem[] = [
     //     icon: BookOpen,
     // },
 ];
+
+const page = usePage();
+const user = page.props.auth.user;
 </script>
 
 <template>
@@ -75,6 +79,7 @@ const footerNavItems: NavItem[] = [
             <SidebarMenu>
                 <SidebarMenuItem>
                     <SidebarMenuButton size="lg" as-child>
+
                         <Link :href="dashboard()">
                             <AppLogo />
                         </Link>
@@ -84,6 +89,10 @@ const footerNavItems: NavItem[] = [
         </SidebarHeader>
 
         <SidebarContent class="bg-slate-900 text-white">
+            <div class="p-4" v-if="user?.accounts && user.accounts.length > 1">
+                <AccountSwitcher :accounts="user.accounts" />
+            </div>
+
             <NavMain :items="mainNavItems" />
         </SidebarContent>
 

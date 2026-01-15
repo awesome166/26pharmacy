@@ -41,7 +41,7 @@ class InventoryController extends Controller
     {
         // Emit formal event to ledger
         $event = $this->ledger->emitEvent([
-            'tenant_id' => $request->header('X-Tenant-Id'), // Example of context extraction
+            'account_id' => $request->header('X-Account-Id'), // Example of context extraction
             'branch_id' => $request->branch_id,
             'device_id' => $request->header('X-Device-Id'),
             'event_type' => 'STOCK_ADJUSTED',
@@ -71,7 +71,7 @@ class InventoryController extends Controller
 
     public function index(Request $request)
     {
-        $branchId = $request->header('X-Branch-Id') ?? $request->user()->branch_id;
+        $accountId = $request->header('X-Account-Id') ?? $request->input('account_id');
 
         // Dynamic Pagination Limit
         $perPage = (int) $request->input('per_page', 15);
@@ -79,7 +79,7 @@ class InventoryController extends Controller
             $perPage = 15;
         }
 
-        $stocks = $this->inventoryService->getStockLevels($branchId, $perPage);
+        $stocks = $this->inventoryService->getStockLevels($accountId, $perPage);
 
         if ($request->wantsJson()) {
             return response()->json(['data' => $stocks]);
@@ -94,7 +94,7 @@ class InventoryController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'tenant_id' => 'required|string|exists:tenants,tenant_id',
+            'account_id' => 'required|string|exists:accounts,account_id',
             'branch_id' => 'required|string|exists:branches,branch_id',
             'drug_id' => 'required|string|exists:drugs,drug_id',
             'batch_id' => 'required|string|exists:batches,batch_id',

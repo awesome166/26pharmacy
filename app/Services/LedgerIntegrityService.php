@@ -10,13 +10,13 @@ class LedgerIntegrityService
     /**
      * Verify the hash chain of the ledger for a specific branch.
      *
-     * @param string $branchId
+     * @param string $accountid
      * @return bool
      */
-    public function verifyHashChain(string $branchId)
+    public function verifyHashChain(string $accountid)
     {
         $events = \Illuminate\Support\Facades\DB::table('event_ledger')
-            ->where('branch_id', $branchId)
+            ->where('account_id', $accountid)
             ->orderBy('local_sequence', 'asc')
             ->get();
 
@@ -25,7 +25,7 @@ class LedgerIntegrityService
         foreach ($events as $event) {
             $expectedHash = hash('sha256', $event->event_payload . $previousHash);
             if ($event->event_hash !== $expectedHash) {
-                $this->reportTampering($branchId, "Hash mismatch at sequence {$event->local_sequence}");
+                $this->reportTampering($accountid, "Hash mismatch at sequence {$event->local_sequence}");
                 return false;
             }
             $previousHash = $event->event_hash;
@@ -37,13 +37,13 @@ class LedgerIntegrityService
     /**
      * Report an integrity alert.
      *
-     * @param string $branchId
+     * @param string $accountid
      * @param string $message
      * @return void
      */
-    public function reportTampering(string $branchId, string $message)
+    public function reportTampering(string $accountid, string $message)
     {
-        \Illuminate\Support\Facades\Log::critical("LEDGER TAMPERING DETECTED in branch {$branchId}: {$message}");
+        \Illuminate\Support\Facades\Log::critical("LEDGER TAMPERING DETECTED in branch {$accountid}: {$message}");
         // In reality, you'd send an SMS/Email to security or lock the branch
     }
 }
