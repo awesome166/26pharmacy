@@ -25,7 +25,7 @@ class SyncController extends Controller
     public function push(Request $request)
     {
         // For offline-first: dispatches local events to cloud
-        SyncEventsToCloudJob::dispatch($request->header('X-Branch-Id'));
+        SyncEventsToCloudJob::dispatch($request->header('X-Account-Id'));
 
         if ($request->wantsJson()) {
             return response()->json([
@@ -41,7 +41,7 @@ class SyncController extends Controller
      */
     public function pull(Request $request)
     {
-        PullCloudEventsJob::dispatch($request->header('X-Branch-Id'));
+        PullCloudEventsJob::dispatch($request->header('X-Account-Id'));
 
         if ($request->wantsJson()) {
             return response()->json([

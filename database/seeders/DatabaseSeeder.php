@@ -16,14 +16,14 @@ class DatabaseSeeder extends Seeder
         // User::factory(10)->create();
 
         // User::factory()->create([
-        //     'user_id' =>  \Str::uuid(),
+        //     'user_id' =>  \Str::ulid(),
         //     'name' => 'Test User',
         //     'email' => 'test@example.com',
         //     'password' => 'password@1',
 
         // ]);
 
-        // $this->call(UserSeeder::class);
+        $this->call(DrugSeeder::class);
         $this->call(AbacPermissionSeeder::class);
         $this->call(PlatformSeeder::class);
 

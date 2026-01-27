@@ -16,24 +16,24 @@ class EventLedgerService
     public function emitEvent(array $eventData)
     {
         return \Illuminate\Support\Facades\DB::transaction(function () use ($eventData) {
-            $lastEvent = \Illuminate\Support\Facades\DB::table('event_ledger')
-                ->where('account_id', $eventData['account_id'])
+            // Scope automatically handles account_id filtering via UsesTenant
+            $lastEvent = \App\Models\EventLedger::query()
                 ->orderBy('local_sequence', 'desc')
                 ->first();
 
             $sequence = $lastEvent ? $lastEvent->local_sequence + 1 : 1;
             $previousHash = $lastEvent ? $lastEvent->event_hash : str_repeat('0', 64);
 
-            $id = \Illuminate\Support\Str::uuid();
+            $id = \Illuminate\Support\Str::ulid();
             $hash = $this->computeHash($eventData['event_payload'], $previousHash);
 
-            \Illuminate\Support\Facades\DB::table('event_ledger')->insert([
-                'event_id' => $id,
-                'account_id' => $eventData['account_id'],
+            \App\Models\EventLedger::create([
+                'id' => $id,
+                // 'account_id' => $eventData['account_id'], // Explicitly passed, but trait likely enforces/defaults
                 'device_id' => $eventData['device_id'],
                 'actor_user_id' => $eventData['actor_user_id'] ?? null,
                 'event_type' => $eventData['event_type'],
-                'event_payload' => json_encode($eventData['event_payload']),
+                'event_payload' => $eventData['event_payload'], // Casts handle json encoding
                 'local_sequence' => $sequence,
                 'event_time_utc' => now(),
                 'event_hash' => $hash,
@@ -41,12 +41,12 @@ class EventLedgerService
 
             // Dispatch job for processing
             \App\Jobs\ProcessLedgerEventJob::dispatch((object) [
-                'event_id' => $id,
+                'id' => $id,
                 'event_type' => $eventData['event_type'],
                 'event_payload' => $eventData['event_payload']
             ]);
 
-            return (object) ['event_id' => $id, 'hash' => $hash];
+            return (object) ['id' => $id, 'hash' => $hash];
         });
     }
 
@@ -67,12 +67,12 @@ class EventLedgerService
      *
      * @param string $accountid
      * @param int $sinceSequence
-     * @return \Illuminate\Support\Collection
+     * @return \Illuminate\Database\Eloquent\Collection
      */
     public function getEvents(string $accountid, int $sinceSequence = 0)
     {
-        return \Illuminate\Support\Facades\DB::table('event_ledger')
-            ->where('account_id', $accountid)
+        return \App\Models\EventLedger::query()
+            // account_id filter handled by UsesTenant scope
             ->where('local_sequence', '>', $sinceSequence)
             ->orderBy('local_sequence', 'asc')
             ->get();

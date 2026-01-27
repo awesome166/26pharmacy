@@ -9,9 +9,12 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('system_settings', function (Blueprint $table) {
-            $table->string('key')->primary();
+            $table->string('key');
+            $table->string('account_id')->nullable(); // Nullable for Platform/Global settings
             $table->text('value')->nullable();
             $table->timestamps();
+
+            $table->primary(['key', 'account_id']); // Composite primary key
         });
     }
 

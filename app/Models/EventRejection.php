@@ -5,13 +5,14 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+use Illuminate\Database\Eloquent\Concerns\HasUlids;
+
 class EventRejection extends Model
 {
+    use HasUlids;
 
 
     protected $primaryKey = 'event_id';
-    public $incrementing = false;
-    protected $keyType = 'string';
 
     protected $fillable = [
         'event_id',

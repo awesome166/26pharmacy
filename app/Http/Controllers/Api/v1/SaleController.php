@@ -23,21 +23,33 @@ class SaleController extends Controller
 
     public function index(Request $request)
     {
-        $branchId = $request->header('X-Branch-Id') ?? $request->user()->branch_id;
-
         // Dynamic Pagination Limit
         $perPage = (int) $request->input('per_page', 15);
         if (!in_array($perPage, [10, 20, 50, 100, 200])) {
             $perPage = 15;
         }
 
-        $sales = $this->saleService->getAllSales($branchId, $perPage);
+        // Extract filters
+        $filters = [
+            'search' => $request->input('search'),
+            'start_date' => $request->input('start_date'),
+            'end_date' => $request->input('end_date'),
+        ];
+
+        // Extract sort parameters
+        $sortBy = $request->input('sort_by', 'finalized_at');
+        $sortDirection = $request->input('sort_direction', 'desc');
+
+        $sales = $this->saleService->getAllSales($perPage, $filters, $sortBy, $sortDirection);
 
         if ($request->wantsJson()) {
             return response()->json(['data' => $sales]);
         }
 
-        return Inertia::render('Sales/Index', ['sales' => $sales, 'filters' => $request->only(['search', 'per_page'])]);
+        return Inertia::render('Sales/Index', [
+            'sales' => $sales,
+            'filters' => $request->only(['search', 'per_page', 'start_date', 'end_date', 'sort_by', 'sort_direction'])
+        ]);
     }
 
     /**
@@ -45,10 +57,10 @@ class SaleController extends Controller
      */
     public function store(FinalizeSaleRequest $request) // Removed JsonResponse return type
     {
-
-
         // Thin controller: orchestrates service and compliance jobs
         $eventReceipt = $this->saleService->processSale($request->validated());
+
+        Log::info('Sale processed', ['event_receipt' => $eventReceipt]);
 
         // Regulator-grade audit trail entry
         if ($eventReceipt) {
@@ -58,7 +70,7 @@ class SaleController extends Controller
                 'action' => 'SALE_FINALIZED',
                 'actor_user_id' => $request->user_id,
                 'metadata' => [
-                    'branch_id' => $request->branch_id,
+                    'account_id' => $request->account_id,
                     'device_id' => $request->device_id,
                     'total_amount' => $request->subtotal
                 ]

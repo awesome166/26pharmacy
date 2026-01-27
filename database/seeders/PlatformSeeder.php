@@ -53,7 +53,7 @@ class PlatformSeeder extends Seeder
         DB::table('sales')->truncate();
         DB::table('tax_rates')->truncate();
         DB::table('batches')->truncate();
-        DB::table('drugs')->truncate();
+        // DB::table('drugs')->truncate(); // Don't truncate drugs, we use DrugSeeder
         DB::table('event_ledger')->truncate();
         DB::table('devices')->truncate();
 
@@ -67,7 +67,7 @@ class PlatformSeeder extends Seeder
         $deviceIds = [];
         foreach ($accounts as $accountId) {
             for ($d = 0; $d < rand(2, 4); $d++) {
-                $deviceId = (string) Str::uuid();
+                $deviceId = (string) Str::ulid();
                 DB::table('devices')->insert([
                     'device_id' => $deviceId,
                     'device_name' => $faker->randomElement(['Main Counter', 'Drive-thru', 'Consultation', 'Stockroom']) . ' ' . $faker->randomElement(['POS', 'Scanner', 'Tablet']),
@@ -90,7 +90,7 @@ class PlatformSeeder extends Seeder
 
             for ($e = 0; $e < $eventCount; $e++) {
                 DB::table('event_ledger')->insert([
-                    'id' => (string) Str::uuid(),
+                    'id' => (string) Str::ulid(),
                     'account_id' => $accountId,
                     'device_id' => $deviceId,
                     'actor_user_id' => $faker->optional(0.8)->randomElement($users),
@@ -114,57 +114,65 @@ class PlatformSeeder extends Seeder
         }
 
         // 3. Create Drugs (common pharmacy drugs)
-        $drugIds = [];
-        $commonDrugs = [
-            ['name' => 'Amoxicillin', 'generic_name' => 'Amoxicillin', 'strength' => '500mg', 'form' => 'Capsule', 'drug_class' => 'Antibiotic'],
-            ['name' => 'Lisinopril', 'generic_name' => 'Lisinopril', 'strength' => '10mg', 'form' => 'Tablet', 'drug_class' => 'Blood Pressure'],
-            ['name' => 'Metformin', 'generic_name' => 'Metformin', 'strength' => '850mg', 'form' => 'Tablet', 'drug_class' => 'Diabetes'],
-            ['name' => 'Atorvastatin', 'generic_name' => 'Atorvastatin', 'strength' => '20mg', 'form' => 'Tablet', 'drug_class' => 'Cholesterol'],
-            ['name' => 'Levothyroxine', 'generic_name' => 'Levothyroxine', 'strength' => '50mcg', 'form' => 'Tablet', 'drug_class' => 'Thyroid'],
-            ['name' => 'Albuterol', 'generic_name' => 'Albuterol', 'strength' => '90mcg', 'form' => 'Inhaler', 'drug_class' => 'Asthma'],
-            ['name' => 'Omeprazole', 'generic_name' => 'Omeprazole', 'strength' => '20mg', 'form' => 'Capsule', 'drug_class' => 'Acid Reflux'],
-            ['name' => 'Sertraline', 'generic_name' => 'Sertraline', 'strength' => '50mg', 'form' => 'Tablet', 'drug_class' => 'Antidepressant'],
-            ['name' => 'Ibuprofen', 'generic_name' => 'Ibuprofen', 'strength' => '400mg', 'form' => 'Tablet', 'drug_class' => 'Pain Relief', 'is_prescription' => false],
-            ['name' => 'Acetaminophen', 'generic_name' => 'Acetaminophen', 'strength' => '500mg', 'form' => 'Tablet', 'drug_class' => 'Pain Relief', 'is_prescription' => false],
-            ['name' => 'Vitamin D3', 'generic_name' => 'Cholecalciferol', 'strength' => '1000 IU', 'form' => 'Softgel', 'drug_class' => 'Supplement', 'is_prescription' => false],
-            ['name' => 'Oxycodone', 'generic_name' => 'Oxycodone', 'strength' => '5mg', 'form' => 'Tablet', 'drug_class' => 'Pain Relief', 'is_controlled' => true, 'is_narcotic' => true, 'schedule' => 'CII'],
-            ['name' => 'Alprazolam', 'generic_name' => 'Alprazolam', 'strength' => '0.5mg', 'form' => 'Tablet', 'drug_class' => 'Anxiety', 'is_controlled' => true, 'schedule' => 'CIV'],
-        ];
+        // Check if drugs exist (seeded by DrugSeeder)
+        $drugIds = DB::table('drugs')->pluck('id')->toArray();
 
-        foreach ($commonDrugs as $drug) {
-            $drugId = (string) Str::uuid();
-            DB::table('drugs')->insert([
-                'id' => $drugId,
-                'name' => $drug['name'],
-                'generic_name' => $drug['generic_name'],
-                'strength' => $drug['strength'],
-                'form' => $drug['form'],
-                'route' => $faker->randomElement(['Oral', 'Topical', 'Inhalation']),
-                'regulatory_code' => $faker->bothify('NDC-#####-##'),
-                'manufacturer' => $faker->randomElement(['Pfizer', 'Novartis', 'Merck', 'GSK']),
-                'supplier' => $faker->company,
-                'is_prescription' => $drug['is_prescription'] ?? true,
-                'is_controlled' => $drug['is_controlled'] ?? false,
-                'is_narcotic' => $drug['is_narcotic'] ?? false,
-                'drug_class' => $drug['drug_class'],
-                'storage_conditions' => $faker->randomElement(['Room Temperature', 'Refrigerate']),
-                'description' => $faker->sentence(10),
-                'side_effects' => $faker->sentence(15),
-                'contraindications' => $faker->sentence(12),
-                'schedule' => $drug['schedule'] ?? null,
-                'alternate_names' => json_encode([$drug['name'] . ' ER']),
-                'metadata' => json_encode(['category' => $drug['drug_class']]),
-                'created_at' => now()->subDays(rand(100, 365)),
-                'updated_at' => now(),
-            ]);
-            $drugIds[] = $drugId;
+        if (empty($drugIds)) {
+            $this->command->info('No existing drugs found. Seeding common drugs...');
+            $commonDrugs = [
+                ['name' => 'Amoxicillin', 'generic_name' => 'Amoxicillin', 'strength' => '500mg', 'form' => 'Capsule', 'drug_class' => 'Antibiotic', 'regulatory_code' => 'POM'],
+                ['name' => 'Lisinopril', 'generic_name' => 'Lisinopril', 'strength' => '10mg', 'form' => 'Tablet', 'drug_class' => 'Blood Pressure', 'regulatory_code' => 'POM'],
+                ['name' => 'Metformin', 'generic_name' => 'Metformin', 'strength' => '850mg', 'form' => 'Tablet', 'drug_class' => 'Diabetes', 'regulatory_code' => 'POM'],
+                ['name' => 'Atorvastatin', 'generic_name' => 'Atorvastatin', 'strength' => '20mg', 'form' => 'Tablet', 'drug_class' => 'Cholesterol', 'regulatory_code' => 'POM'],
+                ['name' => 'Levothyroxine', 'generic_name' => 'Levothyroxine', 'strength' => '50mcg', 'form' => 'Tablet', 'drug_class' => 'Thyroid', 'regulatory_code' => 'POM'],
+                ['name' => 'Albuterol', 'generic_name' => 'Albuterol', 'strength' => '90mcg', 'form' => 'Inhaler', 'drug_class' => 'Asthma', 'regulatory_code' => 'P'],
+                ['name' => 'Omeprazole', 'generic_name' => 'Omeprazole', 'strength' => '20mg', 'form' => 'Capsule', 'drug_class' => 'Acid Reflux', 'regulatory_code' => 'POM'],
+                ['name' => 'Sertraline', 'generic_name' => 'Sertraline', 'strength' => '50mg', 'form' => 'Tablet', 'drug_class' => 'Antidepressant', 'regulatory_code' => 'POM'],
+                ['name' => 'Ibuprofen', 'generic_name' => 'Ibuprofen', 'strength' => '400mg', 'form' => 'Tablet', 'drug_class' => 'Pain Relief', 'is_prescription' => false, 'regulatory_code' => 'OTC'],
+                ['name' => 'Acetaminophen', 'generic_name' => 'Acetaminophen', 'strength' => '500mg', 'form' => 'Tablet', 'drug_class' => 'Pain Relief', 'is_prescription' => false, 'regulatory_code' => 'OTC'],
+                ['name' => 'Vitamin D3', 'generic_name' => 'Cholecalciferol', 'strength' => '1000 IU', 'form' => 'Softgel', 'drug_class' => 'Supplement', 'is_prescription' => false, 'regulatory_code' => 'OTC'],
+                ['name' => 'Oxycodone', 'generic_name' => 'Oxycodone', 'strength' => '5mg', 'form' => 'Tablet', 'drug_class' => 'Pain Relief', 'is_controlled' => true, 'is_narcotic' => true, 'schedule' => 'CII', 'regulatory_code' => 'CD'],
+                ['name' => 'Alprazolam', 'generic_name' => 'Alprazolam', 'strength' => '0.5mg', 'form' => 'Tablet', 'drug_class' => 'Anxiety', 'is_controlled' => true, 'schedule' => 'CIV', 'regulatory_code' => 'CD'],
+            ];
+
+            foreach ($commonDrugs as $drug) {
+                $drugId = (string) Str::ulid();
+                DB::table('drugs')->insert([
+                    'id' => $drugId,
+                    'name' => $drug['name'],
+                    'generic_name' => $drug['generic_name'],
+                    'strength' => $drug['strength'],
+                    'form' => $drug['form'],
+                    'route' => $faker->randomElement(['Oral', 'Topical', 'Inhalation']),
+                    'regulatory_code' => $drug['regulatory_code'],
+                    'manufacturer' => $faker->randomElement(['Pfizer', 'Novartis', 'Merck', 'GSK']),
+                    'supplier' => $faker->company,
+
+                    'drug_class' => $drug['drug_class'],
+                    'storage_conditions' => $faker->randomElement(['Room Temperature', 'Refrigerate']),
+                    'description' => $faker->sentence(10),
+                    'side_effects' => $faker->sentence(15),
+                    'contraindications' => $faker->sentence(12),
+                    'schedule' => $drug['schedule'] ?? null,
+                    'alternate_names' => json_encode([$drug['name'] . ' ER']),
+                    'metadata' => json_encode(['category' => $drug['drug_class']]),
+                    'created_at' => now()->subDays(rand(100, 365)),
+                    'updated_at' => now(),
+                ]);
+                $drugIds[] = $drugId;
+            }
+        } else {
+             $this->command->info('Using ' . count($drugIds) . ' existing drugs from database.');
         }
 
         // 4. Create Batches for drugs
         $batchIds = [];
-        foreach ($drugIds as $drugId) {
+        // Limit to a reasonable number of drugs for batch creation to avoid performance issues
+        $drugsForBatches = count($drugIds) > 50 ? $faker->randomElements($drugIds, 50) : $drugIds;
+
+        foreach ($drugsForBatches as $drugId) {
             for ($b = 0; $b < rand(1, 3); $b++) {
-                $batchId = (string) Str::uuid();
+                $batchId = (string) Str::ulid();
                 $manufactureDate = $faker->dateTimeBetween('-1 year', '-3 months');
                 $expiryDate = (clone $manufactureDate)->modify('+' . rand(12, 24) . ' months');
 
@@ -195,7 +203,7 @@ class PlatformSeeder extends Seeder
 
             foreach ($pharmacyDrugs as $drugId) {
                 $batchId = $faker->randomElement($batchIds);
-                $inventoryId = (string) Str::uuid();
+                $inventoryId = (string) Str::ulid();
                 $costPrice = DB::table('batches')->where('id', $batchId)->value('cost_price');
                 $sellingPrice = $costPrice * $faker->randomFloat(2, 1.3, 2.0);
 
@@ -223,7 +231,7 @@ class PlatformSeeder extends Seeder
             $salesCount = rand(10, 20);
 
             for ($s = 0; $s < $salesCount; $s++) {
-                $saleId = (string) Str::uuid();
+                $saleId = (string) Str::ulid();
                 $subtotal = $faker->randomFloat(2, 10, 300);
                 $tax = round($subtotal * 0.07, 2);
                 $total = $subtotal + $tax;
@@ -269,7 +277,7 @@ class PlatformSeeder extends Seeder
                 $taxAmount = round($lineTotal * 0.07, 2);
 
                 DB::table('sale_items')->insert([
-                    'id' => (string) Str::uuid(),
+                    'id' => (string) Str::ulid(),
                     'batch_id' => $inventory->batch_id,
                     'inventory_id' => $inventoryId,
                     'sale_id' => $saleId,
@@ -308,7 +316,7 @@ class PlatformSeeder extends Seeder
                 $grossProfit = $netSales - $totalCost;
 
                 DB::table('financial_day_summaries')->insert([
-                    'id' => (string) Str::uuid(),
+                    'id' => (string) Str::ulid(),
                     'account_id' => $accountId,
                     'day' => $date->toDateString(),
                     'gross_sales' => $grossSales,
@@ -351,7 +359,7 @@ class PlatformSeeder extends Seeder
         foreach ($jurisdictions as $jurisdiction) {
             // Global tax rate
             DB::table('tax_rates')->insert([
-                'id' => (string) Str::uuid(),
+                'id' => (string) Str::ulid(),
                 'account_id' => null,
                 'jurisdiction' => $jurisdiction,
                 'tax_name' => $jurisdiction . ' Sales Tax',
@@ -370,7 +378,7 @@ class PlatformSeeder extends Seeder
             foreach ($accounts as $accountId) {
                 if ($faker->boolean(50)) {
                     DB::table('tax_rates')->insert([
-                        'id' => (string) Str::uuid(),
+                        'id' => (string) Str::ulid(),
                         'account_id' => $accountId,
                         'jurisdiction' => $jurisdiction,
                         'tax_name' => 'Pharmacy Special Tax',
@@ -397,14 +405,14 @@ class PlatformSeeder extends Seeder
                 'inventory' => $faker->randomElement($inventoryIds),
                 'drug' => $faker->randomElement($drugIds),
                 'batch' => $faker->randomElement($batchIds),
-                default => (string) Str::uuid(),
+                default => (string) Str::ulid(),
             };
 
             $oldValues = $faker->boolean(70) ? json_encode(['old_value' => $faker->word]) : null;
             $newValues = json_encode(['new_value' => $faker->word]);
 
             DB::table('audit_trail')->insert([
-                'id' => (string) Str::uuid(),
+                'id' => (string) Str::ulid(),
                 'account_id' => $accountId,
                 'entity_type' => $entityType,
                 'entity_id' => $entityId,
@@ -421,7 +429,7 @@ class PlatformSeeder extends Seeder
 
         // 11. Create Event Rejections
         for ($r = 0; $r < 5; $r++) {
-            $eventId = (string) Str::uuid();
+            $eventId = (string) Str::ulid();
             DB::table('event_rejections')->insert([
                 'id' => $eventId,
                 'rejection_reason' => $faker->randomElement(['Invalid format', 'Missing required fields', 'Duplicate event', 'Data inconsistency']),
@@ -429,7 +437,7 @@ class PlatformSeeder extends Seeder
                 'rejection_details' => $faker->sentence(15),
                 'resolved_at' => $faker->optional(0.6)->dateTimeBetween('-10 days', 'now'),
                 'resolution_action' => $faker->randomElement(['corrected', 'ignored', 'resubmitted']),
-                'resolved_event_id' => $faker->boolean(50) ? (string) Str::uuid() : null,
+                'resolved_event_id' => $faker->boolean(50) ? (string) Str::ulid() : null,
                 'correction_data' => json_encode(['corrected_fields' => $faker->words(3, true)]),
                 'created_at' => now()->subDays(rand(1, 30)),
                 'updated_at' => now(),

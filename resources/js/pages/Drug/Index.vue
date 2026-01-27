@@ -4,8 +4,10 @@ import { Head, router } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import CrudDialog from './CrudDialog.vue';
 import { debounce } from 'lodash';
+import { DRUG_CATEGORIES } from '@/constants/drugCategories';
 
 const props = defineProps({
   data: Object,
@@ -13,24 +15,32 @@ const props = defineProps({
 });
 
 const search = ref(props.filters?.search || '');
+const regulatoryCode = ref(props.filters?.regulatory_code || 'all');
+const source = ref(props.filters?.source || 'all');
 const dialogRef = ref();
 
-watch(search, debounce((value) => {
-  router.get('/app/drugs', { search: value }, {
+const updateParams = debounce(() => {
+  router.get('/app/drugs', {
+    search: search.value,
+    regulatory_code: regulatoryCode.value,
+    source: source.value
+  }, {
     preserveState: true,
     replace: true,
   });
-}, 300));
+}, 300);
+
+watch([search, regulatoryCode, source], updateParams);
 
 const openAddDrug = () => {
   dialogRef.value.openDialog();
 };
 
-const editDrug = (drug) => {
+const editDrug = (drug: any) => {
   dialogRef.value.openDialog(drug);
 };
 
-const deleteDrug = async (drugId) => {
+const deleteDrug = async (drugId: string) => {
   if (confirm('Are you sure you want to delete this drug?')) {
     router.delete(`/app/drugs/${drugId}`);
   }
@@ -54,13 +64,39 @@ const drugs = computed(() => props.data?.data || []);
 
       <div class="rounded-xl border bg-card text-card-foreground shadow">
         <div class="p-4">
-          <Input v-model="search" placeholder="Search drugs..." class="w-64 mb-4" />
+          <div class="flex flex-col sm:flex-row gap-4 mb-4">
+            <Input v-model="search" placeholder="Search drugs..." class="w-full sm:w-64" />
+
+            <Select v-model="regulatoryCode">
+              <SelectTrigger class="w-full sm:w-[180px]">
+                <SelectValue placeholder="Regulatory Code" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Codes</SelectItem>
+                <SelectItem v-for="cat in DRUG_CATEGORIES" :key="cat.code" :value="cat.code">
+                  {{ cat.code }} - {{ cat.category_name }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select v-model="source">
+              <SelectTrigger class="w-full sm:w-[180px]">
+                <SelectValue placeholder="Source" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Sources</SelectItem>
+                <SelectItem value="platform">Platform</SelectItem>
+                <SelectItem value="store">My Store</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
 
           <div class="relative w-full overflow-auto">
             <table class="w-full text-sm">
               <thead>
                 <tr class="border-b transition-colors hover:bg-muted/50">
                   <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Name</th>
+                  <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Source</th>
                   <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Strength</th>
                   <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Regulatory Code</th>
                   <th class="h-12 px-4 text-right align-middle font-medium text-muted-foreground">Actions</th>
@@ -69,6 +105,13 @@ const drugs = computed(() => props.data?.data || []);
               <tbody>
                 <tr v-for="drug in drugs" :key="drug.drug_id" class="border-b transition-colors hover:bg-muted/50">
                   <td class="p-4 align-middle font-medium">{{ drug.name }}</td>
+                  <td class="p-4 align-middle">
+                    <span
+                      class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                      :class="drug.account_id ? 'border-transparent bg-primary text-primary-foreground hover:bg-primary/80' : 'border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80'">
+                      {{ drug.account_id ? 'Store' : 'Platform' }}
+                    </span>
+                  </td>
                   <td class="p-4 align-middle">{{ drug.strength }}</td>
                   <td class="p-4 align-middle">{{ drug.regulatory_code }}</td>
                   <td class="p-4 align-middle text-right flex justify-end gap-2">
@@ -84,7 +127,7 @@ const drugs = computed(() => props.data?.data || []);
           </div>
 
           <!-- Pagination -->
-          <div class="flex items-center justify-end mt-4 gap-2" v-if="data.links.length > 3">
+          <div class="flex items-center justify-end mt-4 gap-2" v-if="data?.links?.length > 3">
             <template v-for="(link, key) in data.links" :key="key">
               <Button v-if="link.url" variant="outline" size="sm" :disabled="link.active" as-child>
                 <a :href="link.url" v-html="link.label"></a>

@@ -16,13 +16,12 @@ class ProcessLedgerEventJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public $queue = 'projections';
-
     protected $event;
 
     public function __construct($event)
     {
         $this->event = $event;
+        $this->queue = 'projections';
     }
 
     public function handle(ProjectionService $projectionService)

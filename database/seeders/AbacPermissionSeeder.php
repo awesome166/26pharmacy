@@ -47,7 +47,9 @@ class AbacPermissionSeeder extends Seeder
         }
 
         // Create a system user (pharmacy owner/admin)
-        $systemAdminId = DB::table('users')->insertGetId([
+        $systemAdminId = (string) Str::ulid();
+        DB::table('users')->insert([
+            'id' => $systemAdminId,
             'name' => 'Pharmacy System Admin',
             'email' => 'admin@pharmacy.com',
             'email_verified_at' => now(),
@@ -58,7 +60,9 @@ class AbacPermissionSeeder extends Seeder
         ]);
 
         // Create a pharmacy staff user
-        $pharmacistId = DB::table('users')->insertGetId([
+        $pharmacistId = (string) Str::ulid();
+        DB::table('users')->insert([
+            'id' => $pharmacistId,
             'name' => 'John Pharmacist',
             'email' => 'pharmacist@pharmacy.com',
             'email_verified_at' => now(),
@@ -69,7 +73,9 @@ class AbacPermissionSeeder extends Seeder
         ]);
 
         // Create a customer service user
-        $customerServiceId = DB::table('users')->insertGetId([
+        $customerServiceId = (string) Str::ulid();
+        DB::table('users')->insert([
+            'id' => $customerServiceId,
             'name' => 'Sarah Customer Service',
             'email' => 'support@pharmacy.com',
             'email_verified_at' => now(),
@@ -134,7 +140,10 @@ class AbacPermissionSeeder extends Seeder
 
         $accountIds = [];
         foreach ($accounts as $account) {
-            $accountIds[] = DB::table($tables['accounts'])->insertGetId($account);
+            $id = (string) Str::ulid();
+            $account['id'] = $id;
+            DB::table($tables['accounts'])->insert($account);
+            $accountIds[] = $id;
         }
 
         // 2. Create Roles
@@ -210,7 +219,14 @@ class AbacPermissionSeeder extends Seeder
 
         $roleIds = [];
         foreach ($roles as $role) {
-            $roleIds[] = DB::table($tables['roles'])->insertGetId($role);
+            // Need to handle referencing account_id which might be in the array or null
+            // The logic below assumes $assignedPermissions etc use these IDs.
+            // The original code used insertGetId, which returned the ID.
+
+            $id = (string) Str::ulid();
+            $role['id'] = $id;
+            DB::table($tables['roles'])->insert($role);
+            $roleIds[] = $id;
         }
 
         // 3. Create Permissions (E-commerce Pharmacy Specific)
@@ -356,7 +372,10 @@ class AbacPermissionSeeder extends Seeder
 
         $permissionIds = [];
         foreach ($permissions as $permission) {
-            $permissionIds[] = DB::table($tables['permissions'])->insertGetId($permission);
+            $id = (string) Str::ulid();
+            $permission['id'] = $id;
+            DB::table($tables['permissions'])->insert($permission);
+            $permissionIds[] = $id;
         }
 
         // 4. Assign Permissions to Roles via assigned_permissions table
@@ -501,6 +520,7 @@ class AbacPermissionSeeder extends Seeder
         ];
 
         foreach ($assignedPermissions as $assignment) {
+            $assignment['id'] = (string) Str::ulid();
             DB::table($tables['assigned_permissions'])->insert($assignment);
         }
 
@@ -604,6 +624,7 @@ class AbacPermissionSeeder extends Seeder
         ];
 
         foreach ($activityLogs as $log) {
+            $log['id'] = (string) Str::ulid();
             DB::table($tables['activity_logs'])->insert($log);
         }
 

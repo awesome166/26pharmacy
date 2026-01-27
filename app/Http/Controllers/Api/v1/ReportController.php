@@ -22,13 +22,16 @@ class ReportController extends Controller
      */
     public function dailySales(Request $request)
     {
-        $branchId = $request->header('X-Branch-Id') ?? $request->user()->branch_id;
         $date = $request->query('date', now()->toDateString());
 
-        $summary = $this->reportingService->getDailySummary($branchId, $date);
+        $summary = $this->reportingService->getDailySummary($date);
 
-        if ($request->wantsJson()) {
-            return response()->json(['data' => $summary]);
+        $isJson = $request->wantsJson();
+        $isInertia = $request->header('X-Inertia');
+        \Log::info("DailySales Request: wantsJson={$isJson}, isInertia={$isInertia}", $request->headers->all());
+
+        if ($request->wantsJson() && !$request->header('X-Inertia')) {
+            return response()->json($summary);
         }
 
         return Inertia::render('Reports/DailySales', ['summary' => $summary]);
@@ -40,7 +43,7 @@ class ReportController extends Controller
     public function exportLedger(Request $request)
     {
         $path = $this->reportingService->exportRegulatoryData(
-            $request->header('X-Tenant-Id'),
+            $request->header('X-Account-Id'),
             $request->query('start_date'),
             $request->query('end_date')
         );

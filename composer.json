@@ -10,7 +10,7 @@
     "license": "MIT",
     "require": {
         "php": "^8.2",
-        "abacpermissions/abacpermissions": "1.1.4",
+        "abacpermissions/abacpermissions": "1.1.13",
         "inertiajs/inertia-laravel": "^2.0",
         "laravel/fortify": "^1.30",
         "laravel/framework": "^12.0",
@@ -95,11 +95,11 @@
         }
     },
     "repositories": [
-    {
-        "type": "vcs",
-        "url": "https://github.com/awesome166/laravel_abac"
-    }
-],
+        {
+            "type": "vcs",
+            "url": "https://github.com/awesome166/laravel_abac"
+        }
+    ],
     "minimum-stability": "stable",
     "prefer-stable": true
 }

@@ -7,16 +7,17 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from '@/components/ui/label';
 import { ref, computed, watch, onMounted } from 'vue';
 import { debounce } from 'lodash';
-import { Plus, Trash2, CreditCard, Banknote } from 'lucide-vue-next';
+import { Plus, Trash2, CreditCard, Banknote, Printer, User } from 'lucide-vue-next';
 import DosageSelector from './Partials/DosageSelector.vue';
+import InvoiceReceipt from '@/components/InvoiceReceipt.vue';
+import DosageInstructions from '@/components/DosageInstructions.vue';
+import ReturnModal from '@/pages/Sales/ReturnModal.vue';
 
 import type { BreadcrumbItem } from '@/types';
 
 const props = defineProps({
-  inventory: Object,
   filters: Object,
   user: Object,
-  branch_id: String,
 });
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -26,21 +27,44 @@ const breadcrumbs: BreadcrumbItem[] = [
 
 // --- Left Panel: Product List logic ---
 const search = ref(props.filters?.search || '');
-const scannerInput = ref(''); // separate input for scanner focus if needed? or shared
+const scannerInput = ref('');
 const scannerRef = ref(null);
+const inventory = ref({ data: [], links: [] });
+const isLoading = ref(true);
+
+const fetchInventory = (url = '/app/store') => {
+  isLoading.value = true;
+  import('axios').then(({ default: axios }) => {
+    axios.get(url, {
+      params: { search: search.value },
+      headers: { 'Accept': 'application/json' }
+    })
+      .then(response => {
+        inventory.value = response.data.data ? response.data.data : response.data; // Handle potential wrapping
+      })
+      .catch(error => {
+        console.error("Failed to fetch inventory", error);
+      })
+      .finally(() => {
+        isLoading.value = false;
+      });
+  });
+};
+
+onMounted(() => {
+  fetchInventory();
+});
 
 watch(search, debounce((value) => {
-  router.get('/app/store', { search: value }, {
-    preserveState: true,
-    replace: true,
-    preserveScroll: true
-  });
-}, 300));
+  fetchInventory();
+}, 150)); // Reduced from 300ms for better responsiveness
 
 // --- Cart Logic ---
 const cart = ref<any[]>([]);
 const selectedProduct = ref<any>(null);
 const addToCartOpen = ref(false);
+const editCartOpen = ref(false);
+const editingCartIndex = ref<number | null>(null);
 const qtyForm = ref({
   quantity: 1,
   dosage_instructions: {
@@ -78,25 +102,21 @@ const addToCart = () => {
 
   if (existingindex >= 0) {
     cart.value[existingindex].quantity += qtyForm.value.quantity;
-    // Update price if dynamic pricing existed, here it's static/mocked
-    // Assuming price comes from inventory? Wait, inventory doesn't have price in schema yet?
-    // Schema has sales table with amount, but inventory table is just qty.
-    // Seed data generates total randomly.
-    // Let's Mock Price for now based on drug name length or random hash until schema update
     cart.value[existingindex].total = cart.value[existingindex].quantity * cart.value[existingindex].price;
   } else {
-    // Mocking price because Schema doesn't have `price` on `inventory` or `drugs` yet.
-    // In real app, price should be in batches or a price list.
-    const mockPrice = 10.00;
+    // Use selling_price from backend, fallback to 0 if missing.
+    const productPrice = selectedProduct.value.selling_price || 0;
 
     cart.value.push({
       drug_name: selectedProduct.value.drug_name,
       batch_id: selectedProduct.value.batch_id,
       drug_id: selectedProduct.value.drug_id,
+      id: selectedProduct.value.id, // Ensure ID is passed for consistency
       quantity: qtyForm.value.quantity,
-      price: mockPrice,
-      total: mockPrice * qtyForm.value.quantity,
-      dosage_instructions: qtyForm.value.dosage_instructions
+      price: productPrice,
+      total: productPrice * qtyForm.value.quantity,
+      dosage_instructions: qtyForm.value.dosage_instructions,
+      // inventory_id: selectedProduct.value.id
     });
   }
   addToCartOpen.value = false;
@@ -104,6 +124,36 @@ const addToCart = () => {
 
 const removeFromCart = (index) => {
   cart.value.splice(index, 1);
+};
+
+const openEditCart = (index) => {
+  editingCartIndex.value = index;
+  const item = cart.value[index];
+  qtyForm.value = {
+    quantity: item.quantity,
+    dosage_instructions: item.dosage_instructions || {
+      frequency: '',
+      full_frequency: '',
+      route: 'oral',
+      measurement: '',
+      special: [],
+      structured: { type: '', description: '' },
+      duration: ''
+    }
+  };
+  editCartOpen.value = true;
+};
+
+const updateCartItem = () => {
+  if (editingCartIndex.value === null) return;
+
+  const item = cart.value[editingCartIndex.value];
+  item.quantity = qtyForm.value.quantity;
+  item.dosage_instructions = qtyForm.value.dosage_instructions;
+  item.total = item.quantity * item.price;
+
+  editCartOpen.value = false;
+  editingCartIndex.value = null;
 };
 
 // --- Invoicing Logic ---
@@ -116,52 +166,152 @@ const taxAmount = computed(() => subtotal.value * taxRate);
 const totalAmount = computed(() => subtotal.value + taxAmount.value);
 
 const paymentType = ref('cash');
-
-const finalizeForm = useForm({
-  tenant_id: props.user?.tenant_id, // Fallback if user doesn't have it on model but should
-  branch_id: props.branch_id,
-  device_id: 'browser-device', // Mock
-  user_id: props.user?.id,
-  subtotal: 0,
-  tax_amount: 0,
-  total_amount: 0, // Request expects subtotal but logic might want total
-  jurisdiction: 'default',
-  payment_type: 'cash',
-  items: []
+const cashReceived = ref(0);
+const changeAmount = computed(() => {
+  if (paymentType.value === 'cash' && cashReceived.value > 0) {
+    return Math.max(0, cashReceived.value - totalAmount.value);
+  }
+  return 0;
 });
 
 const processing = ref(false);
+const showReceipt = ref(false);
+const lastSaleData = ref<any>(null);
+const showDosageDialog = ref(false);
+const dosageSaleData = ref<any>(null);
+
+// Return Logic
+const returnModalOpen = ref(false);
+const selectedSaleForReturn = ref<any>(null);
+
+const openReturnModal = (sale: any) => {
+  // Fetch full sale details first to get items
+  import('axios').then(({ default: axios }) => {
+    axios.get(`/app/sales/${sale.id}`, {
+      headers: { 'Accept': 'application/json' }
+    })
+      .then(response => {
+        selectedSaleForReturn.value = response.data.data || response.data;
+        returnModalOpen.value = true;
+      })
+      .catch(error => {
+        console.error("Failed to fetch sale details for return", error);
+      });
+  });
+};
+
+// Customer Information
+const showCustomerInfo = ref(false);
+const customerInfo = ref({
+  name: '',
+  phone: '',
+  email: '',
+  dob: ''
+});
+
+// Recent sales for empty cart display
+const recentSales = ref<any[]>([]);
+const loadingRecentSales = ref(false);
+
+const fetchRecentSales = () => {
+  loadingRecentSales.value = true;
+  import('axios').then(({ default: axios }) => {
+    axios.get('/app/sales', {
+      params: { per_page: 10 },
+      headers: { 'Accept': 'application/json' }
+    })
+      .then(response => {
+        recentSales.value = response.data.data?.data || response.data.data || [];
+      })
+      .catch(error => {
+        console.error("Failed to fetch recent sales", error);
+      })
+      .finally(() => {
+        loadingRecentSales.value = false;
+      });
+  });
+};
+
+onMounted(() => {
+  fetchRecentSales();
+});
 
 const finalizeSale = () => {
+  // Validate cash payment
+  if (paymentType.value === 'cash' && cashReceived.value < totalAmount.value) {
+    alert('Cash received is less than the total amount!');
+    return;
+  }
+
   processing.value = true;
 
   // Prepare payload matching FinalizeSaleRequest
   const payload = {
-    tenant_id: props.user.tenants[0].tenant_id || '0557ce57-282c-4c83-a452-eab8d128e728',
-    branch_id: props.branch_id,
-    device_id: 'browser-device',
-    user_id: props.user.id,
-    subtotal: totalAmount.value,
+    account_id: props.user?.accounts[0]?.id, // Use safe navigation
+    user_id: props.user?.id,
+    subtotal: totalAmount.value, // Controller maps logic, Request validates this
     tax_amount: taxAmount.value,
+    total_amount: totalAmount.value,
     payment_type: paymentType.value,
+    cash_received: paymentType.value === 'cash' ? cashReceived.value : null,
+    change_amount: paymentType.value === 'cash' ? changeAmount.value : null,
+    // Include customer information if provided
+    customer_name: showCustomerInfo.value && customerInfo.value.name ? customerInfo.value.name : null,
+    customer_phone: showCustomerInfo.value && customerInfo.value.phone ? customerInfo.value.phone : null,
+    customer_email: showCustomerInfo.value && customerInfo.value.email ? customerInfo.value.email : null,
+    customer_dob: showCustomerInfo.value && customerInfo.value.dob ? customerInfo.value.dob : null,
     items: cart.value.map(item => ({
       batch_id: item.batch_id,
       quantity: item.quantity,
       price: item.price,
+      inventory_id: item.id,
+      drug_id: item.drug_id,
       dosage_instructions: item.dosage_instructions
     }))
   };
-
+  // console.log(payload);
+  // return;
   import('axios').then(({ default: axios }) => {
     axios.post('/app/sales', payload, {
       headers: { 'Accept': 'application/json' }
     })
-      .then(() => {
+      .then((response) => {
+        // Store sale data for receipt
+        lastSaleData.value = {
+          items: [...cart.value],
+          subtotal: subtotal.value,
+          taxAmount: taxAmount.value,
+          totalAmount: totalAmount.value,
+          paymentType: paymentType.value,
+          cashReceived: cashReceived.value,
+          change: changeAmount.value,
+          date: new Date().toLocaleString(),
+          saleId: response.data?.id || response.data?.event_id || 'N/A',
+          servedBy: props.user?.name || 'Staff'
+        };
+
+        // Clear cart and reset
         cart.value = [];
+        cashReceived.value = 0;
+
+        // Reset customer info
+        customerInfo.value = {
+          name: '',
+          phone: '',
+          email: '',
+          dob: ''
+        };
+        showCustomerInfo.value = false;
+
+        // Show receipt dialog
+        showReceipt.value = true;
+
+        // Refresh recent sales and inventory
+        fetchRecentSales();
+        fetchInventory();
       })
       .catch((error) => {
-        // Optionally handle error
-        // e.g., show notification
+        console.error("Sale finalized error", error);
       })
       .finally(() => {
         processing.value = false;
@@ -169,7 +319,190 @@ const finalizeSale = () => {
   });
 };
 
-const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'GHS' }).format(val);
+const viewSaleReceipt = (sale: any) => {
+  // Fetch full sale details with items
+  import('axios').then(({ default: axios }) => {
+    axios.get(`/app/sales/${sale.id}`, {
+      headers: { 'Accept': 'application/json' }
+    })
+      .then(response => {
+        const saleData = response.data.data || response.data;
+        lastSaleData.value = {
+          id: saleData.id,
+          items: saleData.items || [],
+          subtotal: saleData.subtotal_amount,
+          taxAmount: saleData.tax_amount,
+          totalAmount: saleData.total_amount,
+          paymentType: saleData.payment_type,
+          cashReceived: saleData.cash_received,
+          change: saleData.change_amount,
+          date: new Date(saleData.finalized_at || saleData.created_at).toLocaleString(),
+        };
+        showReceipt.value = true;
+      })
+      .catch(error => {
+        console.error("Failed to fetch sale details", error);
+      });
+  });
+};
+
+const printDosageInstructions = (sale: any) => {
+  // Fetch full sale details with items
+  import('axios').then(({ default: axios }) => {
+    axios.get(`/app/sales/${sale.id}`, {
+      headers: { 'Accept': 'application/json' }
+    })
+      .then(response => {
+        dosageSaleData.value = response.data.data || response.data;
+        showDosageDialog.value = true;
+      })
+      .catch(error => {
+        console.error("Failed to fetch sale details", error);
+      });
+  });
+};
+
+const printReceipt = () => {
+  const printWindow = window.open('', '_blank');
+  if (!printWindow) return;
+
+  const receiptHtml = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Receipt - ${lastSaleData.value?.saleId}</title>
+      <style>
+        body {
+          font-family: 'Courier New', monospace;
+          max-width: 300px;
+          margin: 20px auto;
+          padding: 20px;
+        }
+        .header {
+          text-align: center;
+          border-bottom: 2px dashed #000;
+          padding-bottom: 10px;
+          margin-bottom: 10px;
+        }
+        .item {
+          margin: 10px 0;
+          padding: 5px 0;
+          border-bottom: 1px dotted #ccc;
+        }
+        .item-name {
+          font-weight: bold;
+        }
+        .dosage {
+          font-size: 0.85em;
+          font-style: italic;
+          margin-left: 10px;
+          color: #555;
+        }
+        .row {
+          display: flex;
+          justify-content: space-between;
+          margin: 5px 0;
+        }
+        .totals {
+          border-top: 2px solid #000;
+          margin-top: 10px;
+          padding-top: 10px;
+        }
+        .total {
+          font-weight: bold;
+          font-size: 1.2em;
+        }
+        .footer {
+          text-align: center;
+          margin-top: 20px;
+          padding-top: 10px;
+          border-top: 2px dashed #000;
+          font-size: 0.9em;
+        }
+        @media print {
+          body { margin: 0; }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <h2>26 PHARMACY</h2>
+        <p>Receipt #${lastSaleData.value?.saleId}</p>
+        <p>${lastSaleData.value?.date}</p>
+      </div>
+
+      <div class="items">
+        ${lastSaleData.value?.items.map(item => `
+          <div class="item">
+            <div class="item-name">${item.drug_name}</div>
+            <div class="row">
+              <span>${item.quantity} x ${formatCurrency(item.price)}</span>
+              <span>${formatCurrency(item.total)}</span>
+            </div>
+            ${item.dosage_instructions?.full_frequency ? `
+              <div class="dosage">
+                <strong>Dosage:</strong> ${item.dosage_instructions.measurement} ${item.dosage_instructions.full_frequency}
+                ${item.dosage_instructions.special?.length ? `(${item.dosage_instructions.special.join(', ')})` : ''}
+                ${item.dosage_instructions.duration ? `for ${item.dosage_instructions.duration}` : ''}
+              </div>
+            ` : ''}
+          </div>
+        `).join('')}
+      </div>
+
+      <div class="totals">
+        <div class="row">
+          <span>Subtotal:</span>
+          <span>${formatCurrency(lastSaleData.value?.subtotal)}</span>
+        </div>
+        <div class="row">
+          <span>Tax (8%):</span>
+          <span>${formatCurrency(lastSaleData.value?.taxAmount)}</span>
+        </div>
+        <div class="row total">
+          <span>TOTAL:</span>
+          <span>${formatCurrency(lastSaleData.value?.totalAmount)}</span>
+        </div>
+        ${lastSaleData.value?.paymentType === 'cash' ? `
+          <div class="row">
+            <span>Cash Received:</span>
+            <span>${formatCurrency(lastSaleData.value?.cashReceived)}</span>
+          </div>
+          <div class="row">
+            <span>Change:</span>
+            <span>${formatCurrency(lastSaleData.value?.change)}</span>
+          </div>
+        ` : ''}
+        <div class="row">
+          <span>Payment:</span>
+          <span>${lastSaleData.value?.paymentType.toUpperCase()}</span>
+        </div>
+      </div>
+
+      <div class="footer">
+        <p>Thank you for your business!</p>
+        <p>Please keep this receipt for your records</p>
+      </div>
+
+      <script>
+        window.onload = () => {
+          window.print();
+        };
+      <` + `/script>
+<` + `/body>
+
+<` + `/html>
+`;
+
+  printWindow.document.write(receiptHtml);
+  printWindow.document.close();
+};
+
+const formatCurrency = (val: string | number | bigint) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'GHS' }).format(val);
+const formatDate = (dateString: string | number | Date) => {
+  if (!dateString) return 'N/A';
+  return new Date(dateString).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+};
 </script>
 
 <template>
@@ -189,18 +522,22 @@ const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currenc
 
         <!-- Product Grid/List -->
         <div class="flex-1 rounded-xl border bg-card text-card-foreground shadow overflow-hidden flex flex-col">
-          <div class="overflow-y-auto flex-1 p-0">
+          <div v-if="isLoading" class="flex-1 flex items-center justify-center">
+            <span class="text-muted-foreground animate-pulse">Loading inventory...</span>
+          </div>
+          <div v-else class="overflow-y-auto flex-1 p-0">
             <table class="w-full caption-bottom text-sm">
               <thead class="sticky top-0 bg-muted/90 backdrop-blur z-10 [&_tr]:border-b">
                 <tr class="border-b transition-colors">
-                  <th class="h-10 px-4 text-left align-middle font-medium text-muted-foreground">Product</th>
+                  <th class="h-10 px-4 text-left align-middle font-medium text-muted-foreground w-[40%]">Product</th>
                   <th class="h-10 px-4 text-left align-middle font-medium text-muted-foreground">Batch / Expiry</th>
-                  <th class="h-10 px-4 text-right align-middle font-medium text-muted-foreground">Stock</th>
+                  <th class="h-10 px-4 text-right align-middle font-medium text-muted-foreground">Price</th>
+                  <th class="h-10 px-4 text-right align-middle font-medium text-muted-foreground">Stock/shelf</th>
                   <th class="h-10 px-4 text-right align-middle font-medium text-muted-foreground">Action</th>
                 </tr>
               </thead>
-              <tbody>
-                <tr v-for="item in inventory.data" :key="item.inventory_id"
+              <tbody v-if="inventory.data.length">
+                <tr v-for="item in inventory.data" :key="item.id"
                   class="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted cursor-pointer"
                   @click="openAddToCart(item)">
                   <td class="p-4 align-middle font-medium">
@@ -208,14 +545,18 @@ const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currenc
                     <div class="text-xs text-muted-foreground">{{ item.strength }}</div>
                   </td>
                   <td class="p-4 align-middle">
-                    <div class="font-mono text-xs">{{ item.batch_id.substring(0, 8) }}</div>
-                    <div class="text-xs">{{ item.expiry_date }}</div>
+                    <!-- <div class="font-mono text-xs">{{ item.batch_id.substring(0, 8) }}</div> -->
+                    <div class="text-xs">{{ formatDate(item.expiry_date) }}</div>
+                  </td>
+                  <td class="p-4 align-middle text-right font-medium">
+                    {{ formatCurrency(item.selling_price) }}
                   </td>
                   <td class="p-4 align-middle text-right text-lg font-semibold">
-                    {{ item.quantity_on_hand }}
+                    <div class="font-bold">{{ item.quantity_on_hand }}</div>
+                    <div class="text-xs text-muted-foreground">{{ item.location }}</div>
                   </td>
                   <td class="p-4 align-middle text-right">
-                    <Button size="icon" variant="ghost">
+                    <Button size="icon" class="bg-emerald-200 hover:bg-emerald-200">
                       <Plus class="h-4 w-4" />
                     </Button>
                   </td>
@@ -225,15 +566,18 @@ const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currenc
           </div>
 
           <!-- Paginator -->
-          <div class="p-2 border-t flex justify-end gap-2">
+          <div class="p-2 border-t flex justify-end gap-2" v-if="inventory.links && inventory.links.length > 3">
             <template v-for="(link, key) in inventory.links" :key="key">
-              <Button v-if="link.url" variant="outline" size="sm" as-child :disabled="link.active">
-                <a :href="link.url" v-html="link.label"></a>
+              <Button v-if="link.url" variant="outline" size="sm" :disabled="link.active || isLoading"
+                @click.prevent="fetchInventory(link.url)">
+                <span v-html="link.label"></span>
               </Button>
               <span v-else v-html="link.label" class="px-2 text-muted-foreground flex items-center"></span>
             </template>
           </div>
         </div>
+
+        <!-- {{ inventory }} -->
       </div>
 
       <!-- RIGHT PANEL: INVOICE (5/12) -->
@@ -251,9 +595,78 @@ const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currenc
 
           <!-- Cart Items -->
           <div class="flex-1 overflow-y-auto p-4 space-y-2">
-            <div v-if="cart.length === 0" class="text-center text-muted-foreground py-10">
-              Cart is empty. Select items to start.
+            <!-- Empty Cart - Show Recent Sales -->
+            <div v-if="cart.length === 0">
+              <div class="text-center text-muted-foreground py-4 border-b">
+                Cart is empty
+              </div>
+
+              <!-- Recent Sales -->
+              <div class="mt-4">
+                <h3 class="text-sm font-semibold mb-3 px-2">Recent Sales</h3>
+
+                <div v-if="loadingRecentSales" class="text-center py-10 text-muted-foreground">
+                  <span class="animate-pulse">Loading recent sales...</span>
+                </div>
+
+                <div v-else-if="recentSales.length === 0" class="text-center py-10 text-muted-foreground text-sm">
+                  No recent sales
+                </div>
+
+                <div v-else class="space-y-2">
+                  <div v-for="sale in recentSales" :key="sale.id"
+                    class="p-3 border rounded-lg bg-background hover:bg-muted/50 transition-colors">
+                    <div class="flex justify-between items-start mb-2">
+                      <div class="flex-1">
+                        <div class="text-xs text-muted-foreground">
+                          {{ new Date(sale.finalized_at || sale.created_at).toLocaleString() }}
+                        </div>
+                        <div class="font-bold text-lg mt-1">
+                          {{ formatCurrency(sale.total_amount) }}
+                        </div>
+                        <div class="text-xs text-muted-foreground capitalize">
+                          {{ sale.payment_type }}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="flex gap-2 mt-3">
+                      <Button size="sm" variant="outline" class="flex-1 text-xs" @click="viewSaleReceipt(sale)">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 mr-1" viewBox="0 0 24 24" fill="none"
+                          stroke="currentColor" stroke-width="2">
+                          <path
+                            d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002 2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                        </svg>
+                        Receipt
+                      </Button>
+                      <Button size="sm" variant="default" class="flex-1 text-xs" @click="printDosageInstructions(sale)">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 mr-1" viewBox="0 0 24 24" fill="none"
+                          stroke="currentColor" stroke-width="2">
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                          <polyline points="14 2 14 8 20 8" />
+                          <line x1="16" y1="13" x2="8" y2="13" />
+                          <line x1="16" y1="17" x2="8" y2="17" />
+                          <polyline points="10 9 9 9 8 9" />
+                        </svg>
+                        Dosage
+                      </Button>
+                      <Button size="sm" variant="outline"
+                        class="flex-1 text-xs text-orange-600 hover:text-orange-700 hover:bg-orange-50 border-orange-200"
+                        @click="openReturnModal(sale)">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 mr-1" viewBox="0 0 24 24" fill="none"
+                          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74-2.74L3 12" />
+                          <path d="M3 3v9h9" />
+                        </svg>
+                        Return
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
+
+            <!-- Cart Items (when not empty) -->
             <div v-for="(item, index) in cart" :key="index"
               class="flex justify-between items-start p-3 border rounded-lg bg-background shadow-sm">
               <div class="flex-1">
@@ -261,7 +674,7 @@ const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currenc
                 <div class="text-xs text-muted-foreground" v-if="item.dosage_instructions?.full_frequency">
                   {{ item.dosage_instructions.measurement }} {{ item.dosage_instructions.full_frequency }}
                   <span v-if="item.dosage_instructions.special.length">({{ item.dosage_instructions.special.join(', ')
-                    }})</span>
+                  }})</span>
                 </div>
                 <div class="text-sm mt-1">
                   {{ item.quantity }} x {{ formatCurrency(item.price) }}
@@ -271,9 +684,18 @@ const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currenc
                 <div class="font-bold border-b border-dashed">
                   {{ formatCurrency(item.total) }}
                 </div>
-                <Button variant="ghost" size="icon" class="h-6 w-6 text-destructive" @click="removeFromCart(index)">
-                  <Trash2 class="h-4 w-4" />
-                </Button>
+                <div class="flex gap-1">
+                  <Button variant="ghost" size="icon" class="h-6 w-6" @click="openEditCart(index)">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+                      <path d="m15 5 4 4" />
+                    </svg>
+                  </Button>
+                  <Button variant="ghost" size="icon" class="h-6 w-6 text-destructive" @click="removeFromCart(index)">
+                    <Trash2 class="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
@@ -301,14 +723,63 @@ const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currenc
                 <Banknote class="mr-2 h-4 w-4" /> Cash
               </Button>
 
-              <!-- <Button variant="outline" :class="{ 'border-primary bg-primary/10': paymentType === 'momo' }"
+              <Button variant="outline" :class="{ 'border-primary bg-primary/10': paymentType === 'momo' }"
                 @click="paymentType = 'momo'">
                 <CreditCard class="mr-2 h-4 w-4" /> Momo
               </Button>
               <Button variant="outline" :class="{ 'border-primary bg-primary/10': paymentType === 'card' }"
                 @click="paymentType = 'card'">
                 <CreditCard class="mr-2 h-4 w-4" /> Card
-              </Button> -->
+              </Button>
+            </div>
+
+            <!-- Cash Payment Section -->
+            <div v-if="paymentType === 'cash' && cart.length > 0"
+              class="mb-4 space-y-3 p-4 border rounded-lg bg-muted/50">
+              <div>
+                <Label for="cashReceived" class="text-sm font-medium">Cash Received</Label>
+                <Input id="cashReceived" type="number" v-model.number="cashReceived" placeholder="Enter amount received"
+                  class="mt-1 text-lg font-semibold" step="0.01" min="0" />
+              </div>
+              <div v-if="cashReceived > 0" class="flex justify-between items-center p-3 bg-background rounded border-2"
+                :class="cashReceived >= totalAmount ? 'border-green-500' : 'border-red-500'">
+                <span class="font-medium">Change:</span>
+                <span class="text-xl font-bold"
+                  :class="cashReceived >= totalAmount ? 'text-green-600' : 'text-red-600'">
+                  {{ cashReceived >= totalAmount ? formatCurrency(changeAmount) : 'Insufficient' }}
+                </span>
+              </div>
+            </div>
+
+            <!-- Customer Information Toggle & Form -->
+            <div v-if="cart.length > 0" class="mb-4">
+              <Button variant="outline" class="w-full gap-2" @click="showCustomerInfo = !showCustomerInfo"
+                type="button">
+                <User class="h-4 w-4" />
+                {{ showCustomerInfo ? 'Hide' : 'Add' }} Customer Information (Optional)
+              </Button>
+
+              <!-- Customer Info Form -->
+              <div v-if="showCustomerInfo" class="mt-3 space-y-3 p-4 border rounded-lg bg-muted/50">
+                <div>
+                  <Label for="customerName" class="text-sm font-medium">Customer Name</Label>
+                  <Input id="customerName" v-model="customerInfo.name" placeholder="Enter customer name" class="mt-1" />
+                </div>
+                <div>
+                  <Label for="customerPhone" class="text-sm font-medium">Phone Number</Label>
+                  <Input id="customerPhone" v-model="customerInfo.phone" type="tel" placeholder="Enter phone number"
+                    class="mt-1" />
+                </div>
+                <div>
+                  <Label for="customerEmail" class="text-sm font-medium">Email (Optional)</Label>
+                  <Input id="customerEmail" v-model="customerInfo.email" type="email" placeholder="Enter email address"
+                    class="mt-1" />
+                </div>
+                <div>
+                  <Label for="customerDob" class="text-sm font-medium">Date of Birth (Optional)</Label>
+                  <Input id="customerDob" v-model="customerInfo.dob" type="date" class="mt-1" />
+                </div>
+              </div>
             </div>
 
             <Button class="w-full h-12 text-lg  bg-slate-900 text-white   hover:bg-slate-800"
@@ -332,7 +803,7 @@ const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currenc
         <div class="grid gap-4 py-4">
           <div class=" items-center gap-4">
             <Label class=" pb-2 text-right">Quantity</Label>
-            <Input type="number" v-model="qtyForm.quantity" class="col-span-3" min="1" />
+            <Input type="number" v-model="qtyForm.quantity" class="col-span-3" min="1" required />
           </div>
           <div class=" items-start gap-4">
             <Label class=" pb-2 text-right pt-2">Dosage (optional)</Label>
@@ -341,7 +812,8 @@ const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currenc
             </div>
           </div>
           <div class="text-center text-sm font-bold mt-2">
-            Estimated: {{ formatCurrency((10.00 * qtyForm.quantity)) }} <!-- Mock Calculation Display -->
+            Estimated: {{ formatCurrency((selectedProduct?.selling_price * qtyForm.quantity)) }}
+            <!-- Mock Calculation Display -->
           </div>
         </div>
         <DialogFooter>
@@ -349,6 +821,46 @@ const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currenc
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <!-- Edit Cart Item Modal -->
+    <Dialog :open="editCartOpen" @update:open="editCartOpen = $event">
+      <DialogContent class="sm:max-w-[425px]">
+        <DialogHeader>
+          <DialogTitle>Edit Cart Item</DialogTitle>
+          <DialogDescription v-if="editingCartIndex !== null">
+            {{ cart[editingCartIndex]?.drug_name }}
+          </DialogDescription>
+        </DialogHeader>
+        <div class="grid gap-4 py-4">
+          <div class=" items-center gap-4">
+            <Label class=" pb-2 text-right">Quantity</Label>
+            <Input type="number" v-model="qtyForm.quantity" class="col-span-3" min="1" required />
+          </div>
+          <div class=" items-start gap-4">
+            <Label class=" pb-2 text-right pt-2">Dosage (optional)</Label>
+            <div class="col-span-3">
+              <DosageSelector v-model="qtyForm.dosage_instructions" />
+            </div>
+          </div>
+          <div class="text-center text-sm font-bold mt-2" v-if="editingCartIndex !== null">
+            Estimated: {{ formatCurrency((cart[editingCartIndex]?.price * qtyForm.quantity)) }}
+          </div>
+        </div>
+        <DialogFooter>
+          <Button type="submit" @click="updateCartItem">Update Item</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <!-- Receipt Preview using Reusable Component -->
+    <InvoiceReceipt :sale="lastSaleData" :show="showReceipt" @update:show="showReceipt = $event" />
+
+    <!-- Dosage Instructions Dialog -->
+    <DosageInstructions :sale="dosageSaleData" :show="showDosageDialog" @update:show="showDosageDialog = $event" />
+
+    <!-- Return Modal -->
+    <ReturnModal :sale="selectedSaleForReturn" :open="returnModalOpen" @update:open="returnModalOpen = $event"
+      @success="fetchRecentSales(); fetchInventory();" />
 
   </AppLayout>
 </template>

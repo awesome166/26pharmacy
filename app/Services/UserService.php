@@ -12,24 +12,35 @@ class UserService
      *
      * @param string $tenantId
      * @param array $data
-     * @return object
+     * @return \App\Models\User
      */
-    // public function createUser(string $tenantId, array $data)
-    // {
-    //     $id = \Illuminate\Support\Str::uuid();
-    //     \Illuminate\Support\Facades\DB::table('users')->insert([
-    //         'id' => $id,
-    //         'name' => $data['name'],
-    //         'email' => $data['email'],
-    //         'password' => \Illuminate\Support\Facades\Hash::make($data['password']),
+    public function createUser(string $tenantId, array $data)
+    {
+        $userData = [
+            'id' => \Illuminate\Support\Str::ulid()->toString(),
+            'name' => $data['name'],
+            'email' => $data['email'],
+            'password' => \Illuminate\Support\Facades\Hash::make($data['password']),
+            'is_active' => $data['is_active'] ?? true,
+        ];
 
-    //         'is_active' => true,
-    //         'created_at' => now(),
-    //         'updated_at' => now(),
-    //     ]);
+        $user = \App\Models\User::create($userData);
 
-    //     return (object) ['id' => $id];
-    // }
+        // Attach user to account
+        $user->accounts()->attach($tenantId);
+
+        // Assign Role
+        if (!empty($data['role_id'])) {
+            $user->roles()->attach($data['role_id']);
+        }
+
+        // Assign Direct Permissions
+        if (!empty($data['permissions']) && is_array($data['permissions'])) {
+            $this->syncDirectPermissions($user, $data['permissions'], $tenantId);
+        }
+
+        return $user;
+    }
 
     /**
      * Update user information.
@@ -40,13 +51,33 @@ class UserService
      */
     public function updateUser(string $userId, array $data)
     {
-        if (isset($data['password'])) {
-            $data['password'] = \Illuminate\Support\Facades\Hash::make($data['password']);
+        $user = \App\Models\User::findOrFail($userId);
+
+        $updateData = [];
+        if (isset($data['name'])) $updateData['name'] = $data['name'];
+        if (isset($data['email'])) $updateData['email'] = $data['email'];
+        if (isset($data['is_active'])) $updateData['is_active'] = $data['is_active'];
+        if (isset($data['password']) && !empty($data['password'])) {
+            $updateData['password'] = \Illuminate\Support\Facades\Hash::make($data['password']);
         }
 
-        return (bool) \Illuminate\Support\Facades\DB::table('users')
-            ->where('id', $userId)
-            ->update(array_merge($data, ['updated_at' => now()]));
+        if (!empty($updateData)) {
+            $user->update($updateData);
+        }
+
+        // Sync Role
+        if (isset($data['role_id'])) {
+             // Sync roles (assuming single role per tenant context)
+             $user->roles()->sync([$data['role_id']]);
+        }
+
+        // Sync Direct Permissions
+        if (isset($data['permissions']) && is_array($data['permissions'])) {
+            $tenantId = app(\AbacPermissions\Tenancy\TenantContext::class)->getAccountId();
+            $this->syncDirectPermissions($user, $data['permissions'], $tenantId);
+        }
+
+        return true;
     }
 
     /**
@@ -57,8 +88,7 @@ class UserService
      */
     public function deactivateUser(string $userId)
     {
-        return (bool) \Illuminate\Support\Facades\DB::table('users')
-            ->where('id', $userId)
+        return (bool) \App\Models\User::where('id', $userId)
             ->update(['is_active' => false, 'updated_at' => now()]);
     }
 
@@ -66,13 +96,11 @@ class UserService
      * Get user by ID.
      *
      * @param string $userId
-     * @return object|null
+     * @return \App\Models\User|null
      */
     public function getUser(string $userId)
     {
-        return \Illuminate\Support\Facades\DB::table('users')
-            ->where('id', $userId)
-            ->first();
+        return \App\Models\User::with(['roles', 'permissions'])->find($userId);
     }
 
     /**
@@ -83,7 +111,7 @@ class UserService
      */
     public function getAllUsers(int $perPage = 15)
     {
-        return \Illuminate\Support\Facades\DB::table('users')->paginate($perPage);
+        return \App\Models\User::with(['roles'])->paginate($perPage);
     }
 
     /**
@@ -94,8 +122,42 @@ class UserService
      */
     public function deleteUser(string $userId)
     {
-        return (bool) \Illuminate\Support\Facades\DB::table('users')
-            ->where('id', $userId)
+        $user = \App\Models\User::findOrFail($userId);
+
+        // Remove assignments
+         \AbacPermissions\Models\AssignedPermission::where('assignee_type', 'user')
+            ->where('assignee_id', $user->id)
             ->delete();
+
+        return $user->delete();
+    }
+
+    /**
+     * Sync direct permissions for a user
+     */
+    protected function syncDirectPermissions(\App\Models\User $user, array $permissionIds, ?string $tenantId)
+    {
+        // 1. Delete existing direct assignments for this user
+        \AbacPermissions\Models\AssignedPermission::where('assignee_type', 'user')
+            ->where('assignee_id', $user->id)
+            ->delete();
+
+        // 2. Create new assignments
+        $records = [];
+        $now = now();
+        foreach ($permissionIds as $permId) {
+            $records[] = [
+                'assignee_type' => 'user',
+                'assignee_id' => $user->id,
+                'permission_id' => $permId,
+                'account_id' => $tenantId,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        }
+
+        if (count($records) > 0) {
+            \AbacPermissions\Models\AssignedPermission::insert($records);
+        }
     }
 }

@@ -15,13 +15,13 @@ import {
 import { dashboard } from '@/routes';
 import { type NavItem } from '@/types';
 import { Link, usePage } from '@inertiajs/vue3';
-import { BookOpen, Folder, LayoutGrid, ShoppingCart, Package, FileText, ClipboardList } from 'lucide-vue-next';
+import { BookOpen, Folder, User, LayoutGrid, ShoppingCart, Package, FileText, ClipboardList, Settings, Archive, RotateCcw } from 'lucide-vue-next';
 import AppLogo from './AppLogo.vue';
 
 const mainNavItems: NavItem[] = [
     {
         title: 'Dashboard',
-        href: 'dashboard',
+        href: '/dashboard',
         icon: LayoutGrid,
     },
     {
@@ -35,9 +35,19 @@ const mainNavItems: NavItem[] = [
         icon: LayoutGrid, // Or another icon
     },
     {
+        title: 'Returns',
+        href: '/app/returns',
+        icon: RotateCcw,
+    },
+    {
         title: 'Inventory',
         href: '/app/inventory',
         icon: Package,
+    },
+    {
+        title: 'Batches',
+        href: '/app/batches',
+        icon: Archive,
     },
     {
         title: 'Reports',
@@ -53,6 +63,26 @@ const mainNavItems: NavItem[] = [
         title: 'Drugs',
         href: '/app/drugs',
         icon: BookOpen,
+    },
+    {
+        title: 'Users',
+        href: '/app/users',
+        icon: User,
+    },
+    {
+        title: 'Accounts',
+        href: '/app/accounts',
+        icon: User,
+    },
+    {
+        title: 'Roles',
+        href: '/app/roles',
+        icon: User,
+    },
+    {
+        title: 'Configuration',
+        href: '/app/config',
+        icon: Settings,
     },
 ];
 

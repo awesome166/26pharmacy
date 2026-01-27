@@ -6,6 +6,7 @@ use Illuminate\Foundation\Inspiring;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 use AbacPermissions\Facades\AbacPermissions;
+use App\Models\SystemSetting;
 
 class HandleInertiaRequests extends Middleware
 {
@@ -43,9 +44,12 @@ class HandleInertiaRequests extends Middleware
             ...parent::share($request),
             'name' => config('app.name'),
             // 'quote' => ['message' => trim($message), 'author' => trim($author)],
-            'auth' => [
+                'auth' => [
                 'user' => $request->user(),
+                'accounts' => $request->user()?->accounts,
+                'current_account_id' => app(\AbacPermissions\Tenancy\TenantContext::class)->getAccountId(),
                 'permissions' => AbacPermissions::getPermissions(auth()->user()),
+                'settings' => SystemSetting::getMergedSettings(),
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
         ];

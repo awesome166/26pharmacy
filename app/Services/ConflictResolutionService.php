@@ -21,7 +21,7 @@ class ConflictResolutionService
 
         // Mark others as superseded or rejected
         foreach (array_slice($conflictingEvents, 1) as $superseded) {
-            $this->flagForReview($superseded->event_id, "Superseded by later event on same batch.");
+            $this->flagForReview($superseded->id, "Superseded by later event on same batch.");
         }
     }
 
@@ -35,7 +35,7 @@ class ConflictResolutionService
     public function flagForReview(string $eventId, string $reason)
     {
         \Illuminate\Support\Facades\DB::table('event_rejections')->insert([
-            'event_id' => $eventId,
+            'id' => $eventId,
             'rejection_reason' => $reason,
             'reviewed_by' => null,
             'resolved_at' => null,

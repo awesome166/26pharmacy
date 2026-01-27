@@ -8,17 +8,22 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Fortify\TwoFactorAuthenticatable;
+use Illuminate\Database\Eloquent\Concerns\HasUlids;
 
 class User extends Authenticatable
 {
-     use \AbacPermissions\Traits\HasAbac;
+     use \AbacPermissions\Traits\HasAbac {
+        permissions as traitPermissions;
+     }
+
+
 
     /** @use HasFactory<\Database\Factories\UserFactory> */
-    use HasFactory, Notifiable, TwoFactorAuthenticatable;
+    use HasFactory, Notifiable, TwoFactorAuthenticatable, HasUlids;
 
     protected $primaryKey = 'id';
-    public $incrementing = false;
-    protected $keyType = 'string';
+    // public $incrementing = false;
+    // protected $keyType = 'string';
 
     /**
      * The attributes that are mass assignable.
@@ -26,14 +31,14 @@ class User extends Authenticatable
      * @var list<string>
      */
     protected $fillable = [
-        'id',
+        // 'id',
         'name',
         'email',
         'password',
         'is_active',
     ];
 
-    protected $with = ['accounts'];
+    protected $with = ['accounts', 'roles'];
 
     /**
      * The attributes that should be hidden for serialization.
@@ -46,6 +51,21 @@ class User extends Authenticatable
         'two_factor_recovery_codes',
         'remember_token',
     ];
+
+        /**
+     * Override permissions to support eager loading.
+     */
+    public function permissions(): \Illuminate\Database\Eloquent\Relations\MorphToMany
+    {
+        return $this->morphToMany(
+            \AbacPermissions\Models\Permission::class,
+            'assignee',
+            'assigned_permissions',
+            'assignee_id',
+            'permission_id'
+        );
+    }
+
 
     /**
      * Get the attributes that should be cast.

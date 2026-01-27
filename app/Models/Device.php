@@ -6,11 +6,13 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
+use Illuminate\Database\Eloquent\Concerns\HasUlids;
+
 class Device extends Model
 {
+    use HasUlids;
+
     protected $primaryKey = 'device_id';
-    public $incrementing = false;
-    protected $keyType = 'string';
 
     protected $fillable = [
         'device_id',

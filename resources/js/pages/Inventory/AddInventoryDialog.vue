@@ -1,42 +1,85 @@
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue';
-import { useForm } from '@inertiajs/vue3';
+import { ref, watch, onMounted, computed } from 'vue';
+import { debounce } from 'lodash';
+import { useForm, usePage } from '@inertiajs/vue3';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { Check, ChevronsUpDown } from 'lucide-vue-next';
+import { cn } from '@/lib/utils';
 import axios from 'axios';
 
-const props = defineProps({
-  branchId: String,
-  tenantId: String
-});
+// const props = defineProps({
+//   accountID: String
+// });
+
+const page = usePage();
 
 const open = ref(false);
+const openDrugSearch = ref(false);
 const drugs = ref<any[]>([]);
 const batches = ref<any[]>([]);
 const loadingDrugs = ref(false);
 const loadingBatches = ref(false);
+const selectedDrug = ref<any>(null);
+const batchMode = computed(() => page.props.auth.settings?.settings?.inventory_batch_mode || false);
+const drugSearchQuery = ref('');
 
 const form = useForm({
-  tenant_id: props.tenantId || '',
-  branch_id: props.branchId || '',
+  //  account_id: props.accountID,
   drug_id: '',
   batch_id: '',
   selling_price: 0,
   quantity_on_hand: 0
 });
 
-const openDialog = () => {
+const openDialog = async (preSelectedBatch: any = null) => {
   open.value = true;
-  fetchDrugs();
+  await fetchDrugs();
+
+  if (preSelectedBatch) {
+    if (preSelectedBatch.drug) {
+      selectedDrug.value = preSelectedBatch.drug;
+      form.drug_id = preSelectedBatch.drug.drug_id || preSelectedBatch.drug_id;
+    }
+
+    // We need to fetch batches for the selected drug to populate the dropdown
+    // and then select the specific batch
+    if (form.drug_id) {
+      await fetchBatches(form.drug_id);
+      form.batch_id = preSelectedBatch.id; // Assuming batch.id matches batch_id in select
+
+      // Pre-fill quantity if available/relevant
+      if (preSelectedBatch.quantity) {
+        form.quantity_on_hand = preSelectedBatch.quantity
+      }
+    }
+  }
 };
 
-const fetchDrugs = async () => {
+// const fetchSettings = async () => {
+//   try {
+//     const res = await axios.get('/app/config');
+//     if (res.data.data && typeof res.data.config.inventory_batch_mode !== 'undefined') {
+//      batchMode.value = !!res.data.config.inventory_batch_mode;
+//     }
+//   } catch (e) {
+//     console.error('Failed to fetch settings', e);
+//   }
+// };
+
+const fetchDrugs = async (searchTerm: string = '') => {
   loadingDrugs.value = true;
   try {
-    const res = await axios.get('/app/drugs?wantsJson=1');
+    const params: any = { wantsJson: 1 };
+    if (searchTerm) {
+      params.search = searchTerm;
+    }
+    const res = await axios.get('/app/drugs', { params });
     drugs.value = res.data.data.data || res.data.data || [];
   } catch (e) {
     console.error(e);
@@ -44,6 +87,14 @@ const fetchDrugs = async () => {
     loadingDrugs.value = false;
   }
 };
+
+const debouncedFetchDrugs = debounce((searchTerm: string) => {
+  fetchDrugs(searchTerm);
+}, 300);
+
+watch(drugSearchQuery, (newValue) => {
+  debouncedFetchDrugs(newValue);
+});
 
 const fetchBatches = async (drugId: string) => {
   if (!drugId) return;
@@ -80,24 +131,51 @@ defineExpose({ openDialog });
   <Dialog :open="open" @update:open="open = $event">
     <DialogContent class="sm:max-w-[500px]">
       <DialogHeader>
-        <DialogTitle>Add Inventory</DialogTitle>
+        <DialogTitle>Add Inventory
+          <span class="ml-2 text-xs font-normal text-muted-foreground">
+            Batch Mode:
+            <span v-if="batchMode" class="text-green-500">Enabled</span>
+            <span v-else class="text-red-500">Disabled</span>
+          </span>
+        </DialogTitle>
         <DialogDescription>
-          Select a drug and batch to initialize stock at this branch.
+          Select a drug from the list to initialize into stock at this branch.
         </DialogDescription>
       </DialogHeader>
       <div class="grid gap-4 py-4">
         <div class="space-y-2">
           <Label>Select Drug</Label>
-          <Select v-model="form.drug_id">
-            <SelectTrigger>
-              <SelectValue :placeholder="loadingDrugs ? 'Loading drugs...' : 'Choose a drug'" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem v-for="drug in drugs" :key="drug.drug_id" :value="drug.drug_id">
-                {{ drug.name }} ({{ drug.strength }})
-              </SelectItem>
-            </SelectContent>
-          </Select>
+          <Popover v-model:open="openDrugSearch">
+            <PopoverTrigger as-child>
+              <Button variant="outline" role="combobox" class="w-full justify-between">
+                <span class="truncate">
+                  {{ selectedDrug ? `${selectedDrug.name} (${selectedDrug.strength})` : 'Search for a drug...' }}
+                </span>
+                <ChevronsUpDown class="ml-2 h-4 w-4 shrink-0 opacity-50" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent class="w-[400px] p-0">
+              <Command>
+                <CommandInput placeholder="Search drugs..." v-model="drugSearchQuery" />
+                <CommandList>
+                  <CommandEmpty>{{ loadingDrugs ? 'Loading...' : 'No drug found.' }}</CommandEmpty>
+                  <CommandGroup>
+                    <CommandItem v-for="drug in drugs" :key="drug.drug_id" :value="drug.drug_id" @select="() => {
+                      selectedDrug = drug;
+                      form.drug_id = drug.drug_id;
+                      openDrugSearch = false;
+                    }">
+                      <Check :class="cn('mr-2 h-4 w-4', form.drug_id === drug.drug_id ? 'opacity-100' : 'opacity-0')" />
+                      <div class="flex flex-col">
+                        <span>{{ drug.name }}</span>
+                        <span class="text-xs text-muted-foreground">{{ drug.strength }}</span>
+                      </div>
+                    </CommandItem>
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
         </div>
 
         <div class="space-y-2" v-if="form.drug_id">
@@ -117,7 +195,7 @@ defineExpose({ openDialog });
           </p>
         </div>
 
-        <div class="grid grid-cols-2 gap-4">
+        <div class="grid grid-cols-2 gap-4" v-if="batchMode">
           <div class="space-y-2">
             <Label>Selling Price</Label>
             <Input type="number" v-model="form.selling_price" step="0.01" />
@@ -126,6 +204,12 @@ defineExpose({ openDialog });
             <Label>Initial Quantity</Label>
             <Input type="number" v-model="form.quantity_on_hand" />
           </div>
+        </div>
+        <div v-else class="p-3 bg-muted rounded-md text-sm">
+          <p class="text-muted-foreground">
+            <strong>Batch Mode: {{ batchMode ? 'Enabled' : 'Disabled' }}</strong> Selling price and quantity are managed
+            at the batch level.
+          </p>
         </div>
       </div>
       <DialogFooter>

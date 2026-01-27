@@ -16,7 +16,7 @@ class DeviceService
      */
     public function registerDevice(string $accountid, array $data)
     {
-        $id = \Illuminate\Support\Str::uuid();
+        $id = \Illuminate\Support\Str::ulid();
         \Illuminate\Support\Facades\DB::table('devices')->insert([
             'device_id' => $id,
             'account_id' => $accountid,

@@ -14,10 +14,10 @@ return new class extends Migration
 
         // Devices table (without branch reference)
         Schema::create('devices', function (Blueprint $table) {
-            $table->uuid('device_id')->primary();
+            $table->ulid('device_id')->primary();
             $table->string('device_name')->nullable();
             $table->string('trust_status')->default('active'); // active / revoked
-            $table->uuid('account_id')->nullable();
+            $table->unsignedBigInteger('account_id')->nullable();
             $table->string('device_type')->nullable()->comment('POS, Mobile, Tablet, Kiosk');
             $table->string('serial_number')->nullable()->unique();
             $table->string('mac_address')->nullable()->unique();
@@ -31,10 +31,10 @@ return new class extends Migration
         // ----------------------------
 
         Schema::create('event_ledger', function (Blueprint $table) {
-            $table->uuid('id')->primary();
+            $table->ulid('id')->primary();
             $table->unsignedBigInteger('account_id');
-            $table->uuid('device_id');
-            $table->unsignedBigInteger('actor_user_id')->nullable();
+            $table->ulid('device_id');
+            $table->ulid('actor_user_id')->nullable();
             $table->string('event_type');
             $table->string('event_category')->nullable()->comment('sale, inventory, prescription, audit');
             $table->integer('event_version')->default(1);
@@ -60,9 +60,9 @@ return new class extends Migration
         // ----------------------------
 
         Schema::create('sales', function (Blueprint $table) {
-            $table->uuid('id')->primary();
+            $table->ulid('id')->primary();
             $table->integer('account_id');
-            $table->string('user_id')->nullable(); // who served the sale
+            $table->ulid('user_id')->nullable(); // who served the sale
 
             $table->string('customer_name')->nullable();
             $table->date('customer_dob')->nullable()->comment('Date of birth for age verification');
@@ -90,11 +90,11 @@ return new class extends Migration
 
         Schema::create('sale_items', function (Blueprint $table) {
             // $table->id();
-            $table->uuid('id')->primary();
-            $table->uuid('batch_id');
-            $table->uuid('inventory_id');
-            $table->uuid('sale_id');
-            $table->uuid('drug_id');
+            $table->ulid('id')->primary();
+            $table->ulid('batch_id');
+            $table->ulid('inventory_id');
+            $table->ulid('sale_id');
+            $table->ulid('drug_id');
             $table->integer('quantity');
             $table->decimal('price', 15, 2); // Unit price at moment of sale
             $table->decimal('line_total', 15, 2); // Computed total (qty * price)
@@ -124,10 +124,10 @@ return new class extends Migration
 
 
         Schema::create('inventory', function (Blueprint $table) {
-            $table->uuid('id')->primary();
-            $table->uuid('account_id');
-            $table->uuid('drug_id');
-            $table->uuid('batch_id');
+            $table->ulid('id')->primary();
+            $table->unsignedBigInteger('account_id');
+            $table->ulid('drug_id');
+            $table->ulid('batch_id');
             $table->decimal('selling_price', 15, 2)->default(0);
             $table->decimal('cost_price', 15, 2)->default(0)->comment('Current cost from batch');
             $table->integer('reorder_level')->default(0);
@@ -151,8 +151,8 @@ return new class extends Migration
         });
 
     Schema::create('financial_day_summaries', function (Blueprint $table) {
-            $table->uuid('id')->primary();
-            $table->uuid('account_id');
+            $table->ulid('id')->primary();
+            $table->unsignedBigInteger('account_id');
             $table->date('day');
             $table->decimal('gross_sales', 15, 2)->default(0);
             $table->decimal('net_sales', 15, 2)->default(0);
@@ -172,7 +172,7 @@ return new class extends Migration
             $table->json('category_breakdown')->nullable()->comment('Sales by drug category');
             $table->boolean('is_closed')->default(false)->comment('Day closed for reconciliation');
             $table->timestamp('closed_at')->nullable();
-            $table->uuid('closed_by_user_id')->nullable();
+            $table->ulid('closed_by_user_id')->nullable();
             $table->timestamps();
 
             $table->unique(['account_id', 'day']);
@@ -185,7 +185,7 @@ return new class extends Migration
         // ----------------------------
 
    Schema::create('drugs', function (Blueprint $table) {
-            $table->uuid('id')->primary();
+            $table->ulid('id')->primary();
             $table->string('name');
             $table->string('generic_name')->nullable();
             $table->string('strength')->nullable();
@@ -194,9 +194,6 @@ return new class extends Migration
             $table->string('regulatory_code')->nullable()->comment('NDC, DIN, etc.');
             $table->string('manufacturer')->nullable();
             $table->string('supplier')->nullable();
-            $table->boolean('is_prescription')->default(true);
-            $table->boolean('is_controlled')->default(false)->comment('Controlled substance');
-            $table->boolean('is_narcotic')->default(false);
             $table->string('drug_class')->nullable()->comment('Therapeutic class');
             $table->string('storage_conditions')->nullable()->comment('Room temp, Refrigerate, etc.');
             $table->text('description')->nullable();
@@ -217,8 +214,8 @@ return new class extends Migration
         });
 
         Schema::create('batches', function (Blueprint $table) {
-            $table->uuid('id')->primary();
-            $table->uuid('drug_id');
+            $table->ulid('id')->primary();
+            $table->ulid('drug_id');
             $table->date('manufacture_date')->nullable();
 
             $table->string('manufacturer')->nullable();
@@ -244,7 +241,7 @@ return new class extends Migration
         });
 
         Schema::create('tax_rates', function (Blueprint $table) {
-            $table->uuid('id')->primary();
+            $table->ulid('id')->primary();
             $table->unsignedBigInteger('account_id')->nullable()->comment('Null for global rates');
             $table->string('jurisdiction');
             $table->string('tax_name');
@@ -269,12 +266,12 @@ return new class extends Migration
         // ----------------------------
 
         Schema::create('audit_trail', function (Blueprint $table) {
-            $table->uuid('id')->primary();
-            $table->uuid('account_id')->nullable();
+            $table->ulid('id')->primary();
+            $table->unsignedBigInteger('account_id')->nullable();
             $table->string('entity_type');
             $table->string('entity_id')->nullable();
             $table->string('action');
-            $table->uuid('actor_user_id')->nullable();
+            $table->ulid('actor_user_id')->nullable();
 
             $table->json('old_values')->nullable();
             $table->json('new_values')->nullable();
@@ -294,14 +291,14 @@ return new class extends Migration
 
 
         Schema::create('event_rejections', function (Blueprint $table) {
-            $table->uuid('id')->primary();
+            $table->ulid('id')->primary();
             $table->string('rejection_reason');
-            $table->uuid('reviewed_by')->nullable();
+            $table->ulid('reviewed_by')->nullable();
             $table->text('rejection_details')->nullable();
             $table->timestamp('resolved_at')->nullable();
 
             $table->string('resolution_action')->nullable()->comment('corrected, ignored, resubmitted');
-            $table->uuid('resolved_event_id')->nullable()->comment('Corrected event ID');
+            $table->ulid('resolved_event_id')->nullable()->comment('Corrected event ID');
             $table->json('correction_data')->nullable();
             $table->timestamps();
 

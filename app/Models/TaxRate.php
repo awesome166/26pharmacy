@@ -4,21 +4,33 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
+use Illuminate\Database\Eloquent\Concerns\HasUlids;
+
 class TaxRate extends Model
 {
-    protected $primaryKey = 'tax_rate_id';
-    public $incrementing = false;
-    protected $keyType = 'string';
+    use \AbacPermissions\Tenancy\UsesTenant, HasUlids;
+
+    protected $primaryKey = 'id';
 
     protected $fillable = [
-        'tax_rate_id',
+        'id',
+        'tenant_id',
         'jurisdiction',
+        'tax_name',
         'percentage',
+        'tax_type',
+        'applicable_categories',
+        'description',
         'effective_from',
+        'effective_to',
+        'is_active',
     ];
 
     protected $casts = [
         'percentage' => 'decimal:2',
+        'applicable_categories' => 'array',
         'effective_from' => 'date',
+        'effective_to' => 'date',
+        'is_active' => 'boolean',
     ];
 }

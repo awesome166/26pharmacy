@@ -16,13 +16,12 @@ class AuditEventJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public $queue = 'audit-trail';
-
     protected $auditData;
 
     public function __construct(array $auditData)
     {
         $this->auditData = $auditData;
+        $this->queue = 'audit-trail';
     }
 
     public function handle(AuditService $auditService)

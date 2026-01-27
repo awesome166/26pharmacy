@@ -12,23 +12,37 @@ class TaxService
      *
      * @param float $amount
      * @param string $jurisdiction
+     * @param string|null $taxName
      * @return array [tax_amount, total_amount]
      */
-    public function calculateTax(float $amount, string $jurisdiction, ?string $taxName = null, ?string $accountId = null)
+    public function calculateTax(float $amount, string $jurisdiction, ?string $taxName = null)
     {
-        $query = \Illuminate\Support\Facades\DB::table('tax_rates')
+        $accountId = app(\AbacPermissions\Tenancy\TenantContext::class)->getAccountId();
+
+        // Use TaxRate model, but bypass global scope to access both tenant and global rates
+        $query = \App\Models\TaxRate::withoutGlobalScope(\AbacPermissions\Tenancy\TenantScope::class)
             ->where('jurisdiction', $jurisdiction)
             ->where('effective_from', '<=', now())
-            ->where('is_active', true);
+            ->where('is_active', true)
+            ->where(function($q) use ($accountId) {
+                if ($accountId) {
+                    // Prioritize tenant-specific rates, fallback to global
+                    $q->where('account_id', $accountId)
+                      ->orWhereNull('account_id');
+                } else {
+                    // Only global rates when no account context
+                    $q->whereNull('account_id');
+                }
+            });
+
         if ($taxName) {
             $query->where('tax_name', $taxName);
         }
-        if ($accountId) {
-            $query->where(function($q) use ($accountId) {
-                $q->where('account_id', $accountId)->orWhereNull('account_id');
-            });
-        }
-        $rate = $query->orderBy('effective_from', 'desc')->first();
+
+        // Order to prioritize tenant-specific over global, then by effective date
+        $rate = $query->orderByRaw('account_id IS NOT NULL DESC')
+                      ->orderBy('effective_from', 'desc')
+                      ->first();
 
         $percentage = $rate ? $rate->percentage : 0;
         $taxAmount = $amount * ($percentage / 100);
@@ -50,9 +64,11 @@ class TaxService
      */
     public function updateTaxRates(array $taxData)
     {
-        \Illuminate\Support\Facades\DB::table('tax_rates')->insert([
-            'id' => \Illuminate\Support\Str::uuid(),
-            'account_id' => $taxData['account_id'] ?? null,
+        // Use TaxRate model - account_id handled automatically by UsesTenant trait
+        // unless explicitly provided (for global rates with account_id = null)
+        \App\Models\TaxRate::create([
+            'id' => \Illuminate\Support\Str::ulid(),
+            'account_id' => $taxData['account_id'] ?? null, // Allow explicit null for global rates
             'jurisdiction' => $taxData['jurisdiction'],
             'tax_name' => $taxData['tax_name'] ?? 'Sales Tax',
             'percentage' => $taxData['percentage'],
@@ -62,8 +78,6 @@ class TaxService
             'effective_from' => $taxData['effective_from'],
             'effective_to' => $taxData['effective_to'] ?? null,
             'is_active' => $taxData['is_active'] ?? true,
-            'created_at' => now(),
-            'updated_at' => now(),
         ]);
     }
 }

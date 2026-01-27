@@ -41,7 +41,7 @@ class InventoryController extends Controller
     {
         // Emit formal event to ledger
         $event = $this->ledger->emitEvent([
-            'account_id' => $request->header('X-Account-Id'), // Example of context extraction
+            'account_id' => app(\AbacPermissions\Tenancy\TenantContext::class)->getAccountId(),
             'branch_id' => $request->branch_id,
             'device_id' => $request->header('X-Device-Id'),
             'event_type' => 'STOCK_ADJUSTED',
@@ -71,18 +71,43 @@ class InventoryController extends Controller
 
     public function index(Request $request)
     {
-        $accountId = $request->header('X-Account-Id') ?? $request->input('account_id');
-
         // Dynamic Pagination Limit
         $perPage = (int) $request->input('per_page', 15);
         if (!in_array($perPage, [10, 20, 50, 100, 200])) {
             $perPage = 15;
         }
 
-        $stocks = $this->inventoryService->getStockLevels($accountId, $perPage);
+        $search = $request->input('search');
+
+        // Use search if provided, otherwise get all stock levels
+        if ($search) {
+            $stocks = $this->inventoryService->searchDrugs($search, $perPage);
+        } else {
+            $stocks = $this->inventoryService->getStockLevels($perPage);
+        }
 
         if ($request->wantsJson()) {
-            return response()->json(['data' => $stocks]);
+            // Transform the data to include drug and batch information
+            $transformedData = $stocks->through(function ($item) {
+                return [
+                    'id' => $item->id,
+                    'inventory_id' => $item->id,
+                    'drug_id' => $item->drug_id,
+                    'batch_id' => $item->batch_id,
+                    'drug_name' => $item->drug?->name ?? 'Unknown Drug',
+                    'strength' => $item->drug?->strength ?? '',
+                    'lot_number' => $item->batch?->lot_number ?? null,
+                    'expiry_date' => $item->batch?->expiry_date ?? null,
+                    'quantity_on_hand' => $item->quantity_on_hand,
+                    'selling_price' => $item->selling_price,
+                    'cost_price' => $item->cost_price,
+                    'reorder_level' => $item->reorder_level,
+                    'location' => $item->location,
+                    'is_active' => $item->is_active,
+                ];
+            });
+
+            return response()->json(['data' => $transformedData]);
         }
 
         return Inertia::render('Inventory/Index', ['inventory' => $stocks, 'filters' => $request->only(['search', 'per_page'])]);
@@ -103,7 +128,7 @@ class InventoryController extends Controller
         ]);
 
         $inventory = \App\Models\Inventory::create(array_merge($validated, [
-            'inventory_id' => \Illuminate\Support\Str::uuid()
+            'inventory_id' => \Illuminate\Support\Str::ulid()
         ]));
 
         if ($request->wantsJson()) {
@@ -111,5 +136,86 @@ class InventoryController extends Controller
         }
 
         return redirect()->back()->with('success', 'Stock added');
+    }
+
+    /**
+     * Get expired or expiring stock.
+     */
+    public function expired(Request $request)
+    {
+        $daysThreshold = (int) $request->input('days_threshold', 0);
+        $perPage = (int) $request->input('per_page', 15);
+
+        $expiredStock = $this->inventoryService->getExpiredStock($perPage, $daysThreshold);
+
+        if ($request->wantsJson()) {
+             // Transform the data consistent with index method
+             $transformedData = $expiredStock->through(function ($item) {
+                return [
+                    'id' => $item->id,
+                    'inventory_id' => $item->id,
+                    'drug_id' => $item->drug_id,
+                    'batch_id' => $item->batch_id,
+                    'drug_name' => $item->drug?->name ?? 'Unknown Drug',
+                    'strength' => $item->drug?->strength ?? '',
+                    'lot_number' => $item->batch?->lot_number ?? null,
+                    'expiry_date' => $item->batch?->expiry_date ?? null,
+                    'quantity_on_hand' => $item->quantity_on_hand,
+                    'selling_price' => $item->selling_price,
+                    'cost_price' => $item->cost_price,
+                    'location' => $item->location,
+                ];
+            });
+            return response()->json(['data' => $transformedData]);
+        }
+
+        return Inertia::render('Inventory/Expired', [
+            'expiredStock' => $expiredStock,
+            'filters' => $request->only(['days_threshold', 'per_page'])
+        ]);
+    }
+
+    /**
+     * Process expired stock (Write-off).
+     */
+    public function processExpired(Request $request)
+    {
+        $request->validate([
+            'items' => 'required|array',
+            'items.*.batch_id' => 'required|string|exists:batches,id',
+            'items.*.quantity' => 'required|integer|min:1',
+        ]);
+
+        $items = $request->input('items');
+        $processedCount = 0;
+        $accountId = app(\AbacPermissions\Tenancy\TenantContext::class)->getAccountId();
+        $deviceId = $request->header('X-Device-Id') ?? 'unknown';
+
+        foreach ($items as $item) {
+             // Use Service to ensure consistent event structure
+             // We are reducing stock, so quantity change is negative
+             $this->inventoryService->adjustStock(
+                 $item['batch_id'],
+                 -1 * abs($item['quantity']),
+                 'EXPIRED',
+                 ['device_id' => $deviceId, 'user_id' => $request->user()->id]
+             );
+
+             // Also log audit event
+             AuditEventJob::dispatch([
+                'entity_type' => 'inventory',
+                'entity_id' => $item['batch_id'],
+                'action' => 'STOCK_EXPIRED_WRITEOFF',
+                'metadata' => ['quantity' => $item['quantity'], 'account_id' => $accountId]
+            ]);
+
+            $processedCount++;
+        }
+
+        if ($request->wantsJson()) {
+            return response()->json(['message' => "Successfully processed {$processedCount} expired items."]);
+        }
+
+        return redirect()->back()->with('success', "Processed {$processedCount} expired items.");
     }
 }

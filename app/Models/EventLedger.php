@@ -5,28 +5,27 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+use Illuminate\Database\Eloquent\Concerns\HasUlids;
+
 class EventLedger extends Model
 {
-    use \AbacPermissions\Tenancy\UsesTenant;
+    use \AbacPermissions\Tenancy\UsesTenant, HasUlids;
 
 
-    protected $primaryKey = 'event_id';
-    public $incrementing = false;
-    protected $keyType = 'string';
+    protected $table = 'event_ledger';
+    protected $primaryKey = 'id';
+    public $timestamps = false;
 
     protected $fillable = [
-        'event_id',
-        'tenant_id',
-        'branch_id',
+        'id',
+        'account_id',
         'device_id',
         'actor_user_id',
         'event_type',
-        'event_version',
         'event_payload',
         'local_sequence',
         'event_time_utc',
         'event_hash',
-        'received_at_cloud',
     ];
 
     protected $casts = [

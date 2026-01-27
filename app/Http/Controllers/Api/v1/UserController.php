@@ -19,9 +19,19 @@ class UserController extends Controller
 
     public function index(Request $request)
     {
-        $users = \App\Models\User::with(['accounts', 'permissions'])->paginate(15);
+        $tenantId = app(\AbacPermissions\Tenancy\TenantContext::class)->getAccountId();
 
-        if ($request->wantsJson()) {
+        $query = \App\Models\User::with(['accounts', 'roles', 'permissions']);
+
+        if ($tenantId) {
+             $query->whereHas('accounts', function($q) use ($tenantId) {
+                 $q->where('account_id', $tenantId); // Assuming account_user table has account_id
+             });
+        }
+
+        $users = $query->paginate(15);
+
+        if ($request->wantsJson() && !$request->header('X-Inertia')) {
             return \App\Http\Resources\UserResource::collection($users);
         }
 
@@ -30,51 +40,49 @@ class UserController extends Controller
 
     public function store(Request $request)
     {
-        // For brevity, using simple validation here; usually should use a FormRequest
+        $tenantId = app(\AbacPermissions\Tenancy\TenantContext::class)->getAccountId();
+
         $data = $request->validate([
-            'account_id' => 'required|uuid',
-            'name' => 'required|string',
+            'name' => 'required|string|max:255',
             'email' => 'required|email|unique:users,email',
             'password' => 'required|string|min:8',
-            'role_id' => 'required|uuid'
+            'role_id' => 'nullable|exists:roles,id',
+            'permissions' => 'nullable|array',
+            'permissions.*' => 'exists:permissions,id',
+            'is_active' => 'boolean'
         ]);
 
-        $user = $this->userService->createUser($data['account_id'], $data);
+        $user = $this->userService->createUser($tenantId, $data);
 
-        if ($request->wantsJson()) {
-            return response()->json(['data' => $user], 201);
-        }
-
-        return redirect()->back()->with('success', 'User created successfully');
+        return response()->json($user, 201);
     }
 
     public function show(string $userId, Request $request)
     {
-        $user = \App\Models\User::with(['accounts', 'permissions'])->find($userId);
+        $user = $this->userService->getUser($userId);
 
         if (!$user) {
-            if ($request->wantsJson()) {
-                return response()->json(['message' => 'User not found'], 404);
-            }
-            abort(404);
+            return response()->json(['message' => 'User not found'], 404);
         }
 
-        if ($request->wantsJson()) {
-            return new \App\Http\Resources\UserResource($user);
-        }
-
-        return Inertia::render('Users/Show', ['user' => $user]);
+        return new \App\Http\Resources\UserResource($user);
     }
 
     public function update(string $userId, Request $request)
     {
-        $this->userService->updateUser($userId, $request->all());
+        $data = $request->validate([
+            'name' => 'sometimes|string|max:255',
+            'email' => 'sometimes|email|unique:users,email,'.$userId,
+            'password' => 'nullable|string|min:8',
+            'role_id' => 'nullable|exists:roles,id',
+            'permissions' => 'nullable|array',
+            'permissions.*' => 'exists:permissions,id',
+            'is_active' => 'boolean'
+        ]);
 
-        if ($request->wantsJson()) {
-            return response()->json(['message' => 'User updated successfully']);
-        }
+        $this->userService->updateUser($userId, $data);
 
-        return redirect()->back()->with('success', 'User updated successfully');
+        return response()->json(['message' => 'User updated successfully']);
     }
 
     public function destroy(string $userId, Request $request)

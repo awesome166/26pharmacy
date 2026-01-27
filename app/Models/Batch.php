@@ -6,36 +6,46 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
+use Illuminate\Database\Eloquent\Concerns\HasUlids;
+
 class Batch extends Model
 {
-    use \AbacPermissions\Tenancy\UsesTenant;
+    use HasUlids;
 
-    protected $primaryKey = 'batch_id';
-    public $incrementing = false;
-    protected $keyType = 'string';
+    protected $primaryKey = 'id';
 
     protected $fillable = [
-        'batch_id',
+        'id',
         'drug_id',
+        'manufacture_date',
+        'manufacturer',
+        'supplier',
+        'received_date',
+        'is_active',
         'expiry_date',
         'lot_number',
         'quantity',
+        'quantity_received',
         'cost_price',
         'name',
-        'manufacturer',
+        'storage_location',
     ];
 
     protected $casts = [
+        'manufacture_date' => 'date',
+        'received_date' => 'date',
         'expiry_date' => 'date',
+        'is_active' => 'boolean',
+        'cost_price' => 'decimal:2',
     ];
 
     public function drug(): BelongsTo
     {
-        return $this->belongsTo(Drug::class, 'drug_id', 'drug_id');
+        return $this->belongsTo(Drug::class, 'drug_id', 'id');
     }
 
     public function inventories(): HasMany
     {
-        return $this->hasMany(Inventory::class, 'batch_id', 'batch_id');
+        return $this->hasMany(Inventory::class, 'batch_id', 'id');
     }
 }

@@ -17,8 +17,8 @@ class ActivationController extends Controller
         }
 
         // 2. Generate Tenant/Branch Data (Mock from Cloud DB)
-        $tenantId = Str::uuid()->toString();
-        $branchId = Str::uuid()->toString();
+        $tenantId = Str::ulid()->toString();
+        $branchId = Str::ulid()->toString();
 
         $tenant = [
             'tenant_id' => $tenantId,
@@ -38,12 +38,12 @@ class ActivationController extends Controller
 
         $users = [
             [
-                'id' => Str::uuid()->toString(),
+                'id' => Str::ulid()->toString(),
                 'tenant_id' => $tenantId,
                 'name' => 'Admin User',
                 'email' => 'admin@pharmacy.com',
                 'password' => '$2y$12$Def...hashedpassword...', // Hashed 'password'
-                'role_id' => Str::uuid()->toString(),
+                'role_id' => Str::ulid()->toString(),
                 'is_active' => true,
                 'created_at' => now(),
                 'updated_at' => now()

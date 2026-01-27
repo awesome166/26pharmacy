@@ -28,8 +28,22 @@ class UserResource extends JsonResource
                     ];
                 });
             }),
+            'roles' => $this->whenLoaded('roles', function () {
+                return $this->roles->map(function ($role) {
+                    return [
+                        'id' => $role->id,
+                        'name' => $role->name,
+                        'zeus_level' => $role->zeus_level,
+                    ];
+                });
+            }),
             'permissions' => $this->whenLoaded('permissions', function () {
-                return $this->permissions->pluck('name');
+                return $this->permissions->map(function ($perm) {
+                    return [
+                        'id' => $perm->id,
+                        'name' => $perm->name,
+                    ];
+                });
             }),
         ];
     }
