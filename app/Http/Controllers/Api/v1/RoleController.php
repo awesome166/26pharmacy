@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 // use AbacPermissions\Models\Role;
 use App\Models\Role;
+// use AbacPermissions\Models\Role;
 use AbacPermissions\Models\Permission;
 use AbacPermissions\Models\AssignedPermission;
 use AbacPermissions\Tenancy\TenantContext;
@@ -30,7 +31,7 @@ class RoleController extends Controller
              $query->whereNull('account_id');
         }
 
-        $roles = $query->with('permissions')->paginate(15);
+        $roles = $query->getPermissionsWithAccess()->paginate(15);
 
         if ($request->wantsJson() && !$request->header('X-Inertia')) {
             return response()->json($roles);
@@ -48,12 +49,15 @@ class RoleController extends Controller
 
         $request->validate([
             'name' => 'required|string|max:255',
+            'description' => 'nullable|string|max:255',
             'permissions' => 'nullable|array',
-            'permissions.*' => 'exists:permissions,id',
+            'permissions.*.id' => 'required|exists:permissions,id',
+            'permissions.*.access' => 'nullable|array',
         ]);
 
         $role = Role::create([
             'name' => $request->name,
+            'description' => $request->description,
             'account_id' => $tenantId, // Null if system (but usually via tenant context)
             'guard_name' => 'web',
         ]);
@@ -91,12 +95,15 @@ class RoleController extends Controller
 
         $request->validate([
             'name' => 'required|string|max:255',
+            'description' => 'nullable|string|max:255',
             'permissions' => 'nullable|array',
-            'permissions.*' => 'exists:permissions,id',
+            'permissions.*.id' => 'required|exists:permissions,id',
+            'permissions.*.access' => 'nullable|array',
         ]);
 
         $role->update([
             'name' => $request->name,
+            'description' => $request->description,
         ]);
 
         if ($request->has('permissions')) {
@@ -128,39 +135,22 @@ class RoleController extends Controller
     /**
      * Custom sync permissions logic because we are managing AssignedPermission directly
      */
-    protected function syncPermissions(Role $role, array $permissionIds, ?string $tenantId)
+    protected function syncPermissions(Role $role, array $permissions, ?string $tenantId)
     {
-        // 1. Delete existing assignments for this role
-        // Note: We are nuking connection. In a real ABAC system we might want to preserve some specific overrides.
-        // For simplicity of this task "CRUD Role", we sync (replace).
-        AssignedPermission::where('assignee_type', 'role')
-            ->where('assignee_id', $role->id)
-            ->delete();
+        // Use Eloquent syncWithPivotValues to handle:
+        // 1. Pivot ID generation (via AssignedPermission model)
+        // 2. Assignee ID and Type (via morphToMany relationship)
+        // 3. Additional columns like account_id
 
-        // 2. Create new assignments
-        $records = [];
-        $now = now();
-        foreach ($permissionIds as $permId) {
-            $records[] = [
-                'assignee_type' => 'role',
-                'assignee_id' => $role->id,
-                'permission_id' => $permId,
-                'account_id' => null, // Permissions on a role are universal usually?
-                                      // Or if the role is tenant-scoped, the permission assignment implicitly follows.
-                                      // If we assign a permission to a role, do we scope the assignment to the account?
-                                      // Based on AssignedPermission::scopeForAccount, it filters by account_id.
-                                      // However, Role is already account scoped.
-                                      // Let's set account_id to null for the assignment if the role itself is carrying the scope context,
-                                      // OR match the role's account_id.
-                                      // Let's match the role's account_id to be safe and consistent with "Tenancy" requirement.
+        $syncPayload = [];
+        foreach ($permissions as $perm) {
+            $syncPayload[$perm['id']] = [
                 'account_id' => $tenantId,
-                'created_at' => $now,
-                'updated_at' => $now,
+                'assignee_type' => 'role',
+                'access' => isset($perm['access']) ? json_encode($perm['access']) : null, // Store access as JSON
             ];
         }
 
-        if (count($records) > 0) {
-            AssignedPermission::insert($records);
-        }
+        $role->permissions()->sync($syncPayload);
     }
 }

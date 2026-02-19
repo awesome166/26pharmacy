@@ -39,9 +39,18 @@ class UserResource extends JsonResource
             }),
             'permissions' => $this->whenLoaded('permissions', function () {
                 return $this->permissions->map(function ($perm) {
+                    // The pivot here is the assigned_permissions row
+                    $rawAccess = $perm->pivot?->access ?? null;
+                    $access = [];
+                    if ($rawAccess) {
+                        $decoded = is_array($rawAccess) ? $rawAccess : json_decode($rawAccess, true);
+                        $access = is_array($decoded) ? $decoded : [];
+                    }
                     return [
-                        'id' => $perm->id,
-                        'name' => $perm->name,
+                        'id'     => $perm->id,
+                        'name'   => $perm->name,
+                        'type'   => $perm->type,
+                        'access' => $access,
                     ];
                 });
             }),

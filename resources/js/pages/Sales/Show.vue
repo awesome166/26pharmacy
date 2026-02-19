@@ -78,11 +78,21 @@ const formatDate = (dateString) => {
                             class="flex justify-between py-2 border-b border-dashed last:border-0">
                             <div>
                                 <div class="font-medium">{{ item.drug?.name || 'Item' }}</div>
-                                <div class="text-xs text-muted-foreground">{{ item.quantity }} x {{
-                                    formatCurrency(item.price) }}</div>
+                                <div class="text-xs text-muted-foreground">
+                                    {{ item.quantity }} x {{ formatCurrency(item.price) }}
+                                </div>
+                                <div v-if="item.is_returned"
+                                    class="text-xs text-red-600 bg-red-50 inline-block px-1 rounded mt-0.5">
+                                    Returned: {{ item.return_quantity }} / {{ item.quantity }}
+                                    <span v-if="item.return_date">on {{ new Date(item.return_date).toLocaleDateString()
+                                        }}</span>
+                                </div>
                             </div>
-                            <div class="font-mono">
-                                {{ formatCurrency(item.quantity * item.price) }}
+                            <div class="font-mono text-right">
+                                <div>{{ formatCurrency(item.quantity * item.price) }}</div>
+                                <div v-if="item.is_returned" class="text-xs text-red-600">
+                                    -{{ formatCurrency(item.return_quantity * item.price) }}
+                                </div>
                             </div>
                         </div>
 
@@ -93,12 +103,27 @@ const formatDate = (dateString) => {
                     </div>
 
                     <div class="bg-muted/50 px-6 py-4 space-y-2">
+                        <!-- Original Total (Net + Returned) because we updated total_amount to be net -->
+                        <div class="flex justify-between text-sm text-muted-foreground"
+                            v-if="sale.total_returned_amount > 0">
+                            <span>Original Subtotal</span>
+                            <span>{{ formatCurrency(Number(sale.subtotal_amount) + Number(sale.total_returned_amount))
+                                }}</span>
+                        </div>
+
                         <div class="flex justify-between text-sm">
                             <span class="text-muted-foreground">Tax</span>
                             <span>{{ formatCurrency(sale.tax_amount) }}</span>
                         </div>
-                        <div class="flex justify-between text-lg font-bold">
-                            <span>Total</span>
+
+                        <div class="flex justify-between text-sm text-destructive font-medium"
+                            v-if="sale.total_returned_amount > 0">
+                            <span>Returned Amount</span>
+                            <span>-{{ formatCurrency(sale.total_returned_amount) }}</span>
+                        </div>
+
+                        <div class="flex justify-between text-lg font-bold border-t pt-2">
+                            <span>Net Total</span>
                             <span>{{ formatCurrency(sale.total_amount) }}</span>
                         </div>
                     </div>

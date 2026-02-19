@@ -24,16 +24,16 @@ class SyncController extends Controller
      */
     public function push(Request $request)
     {
-        // For offline-first: dispatches local events to cloud
-        SyncEventsToCloudJob::dispatch($request->header('X-Account-Id'));
+        // Trigger SyncService Push
+        $this->syncService->push();
 
         if ($request->wantsJson()) {
             return response()->json([
-                'message' => 'Sync outbox processing started'
-            ], 202);
+                'message' => 'Sync push initiated'
+            ], 200);
         }
 
-        return redirect()->back()->with('success', 'Sync started');
+        return redirect()->back()->with('success', 'Sync push started');
     }
 
     /**
@@ -41,14 +41,15 @@ class SyncController extends Controller
      */
     public function pull(Request $request)
     {
-        PullCloudEventsJob::dispatch($request->header('X-Account-Id'));
+        // Trigger SyncService Pull
+        $this->syncService->pull();
 
         if ($request->wantsJson()) {
             return response()->json([
-                'message' => 'Sync inbox processing started'
-            ], 202);
+                'message' => 'Sync pull initiated'
+            ], 200);
         }
 
-        return redirect()->back()->with('success', 'Sync started');
+        return redirect()->back()->with('success', 'Sync pull started');
     }
 }

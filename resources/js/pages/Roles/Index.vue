@@ -4,7 +4,7 @@
         <Head title="Roles & Permissions" />
 
         <div class="py-12">
-            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+            <div class=" sm:px-6 lg:px-8">
                 <Card>
                     <CardHeader class="flex flex-row items-center justify-between">
                         <div>
@@ -25,8 +25,8 @@
                                         <th class="h-12 px-4 align-middle font-medium text-muted-foreground">Role Name
                                         </th>
                                         <th class="h-12 px-4 align-middle font-medium text-muted-foreground">Guard</th>
-                                        <th class="h-12 px-4 align-middle font-medium text-muted-foreground">Permissions
-                                        </th>
+                                        <!-- <th class="h-12 px-4 align-middle font-medium text-muted-foreground">Permissions
+                                        </th>-->
                                         <th class="h-12 px-4 align-middle font-medium text-muted-foreground text-right">
                                             Actions</th>
                                     </tr>
@@ -34,20 +34,21 @@
                                 <tbody>
                                     <tr v-for="role in roles.data" :key="role.id"
                                         class="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted">
-                                        <td class="p-4 align-middle font-medium">{{ role.name }}</td>
-                                        <td class="p-4 align-middle text-muted-foreground">{{ role.guard_name }}</td>
-                                        <td class="p-4 align-middle">
+                                        <td class="p-4 align-middle font-medium">{{ role.name }} <br> <span
+                                                class="text-xs text-muted-foreground">{{ role.description }}</span></td>
+                                        <td class="p-4 align-middle text-muted-foreground">{{ role.zeus_level }}</td>
+                                        <!-- <td class="p-4 align-middle">
                                             <div class="flex flex-wrap gap-1">
-                                                <Badge v-for="perm in role.permissions.slice(0, 5)" :key="perm.id"
-                                                    variant="secondary" class="text-xs">
+                                                <Badge v-for="perm in role.assigned_permissions.slice(0, 5)"
+                                                    :key="perm.id" variant="secondary" class="text-xs">
                                                     {{ perm.name }}
                                                 </Badge>
-                                                <Badge v-if="role.permissions.length > 5" variant="outline"
+                                                <Badge v-if="role.assigned_permissions.length > 5" variant="outline"
                                                     class="text-xs">
-                                                    +{{ role.permissions.length - 5 }} more
+                                                    +{{ role.permission.length - 5 }} more
                                                 </Badge>
                                             </div>
-                                        </td>
+                                        </td> -->
                                         <td class="p-4 align-middle text-right">
                                             <Button variant="ghost" size="sm" class="mr-2"
                                                 @click="openModal(role)">Edit</Button>
@@ -70,7 +71,7 @@
 
         <!-- Create/Edit Modal -->
         <Dialog :open="showModal" @update:open="val => !val && closeModal()">
-            <DialogContent class="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogContent class="sm:max-w-2xl overflow-hidden flex flex-col max-h-[92vh]">
                 <DialogHeader>
                     <DialogTitle>{{ isEditing ? 'Edit Role' : 'Create New Role' }}</DialogTitle>
                     <DialogDescription>
@@ -78,7 +79,7 @@
                     </DialogDescription>
                 </DialogHeader>
 
-                <div class="py-4 space-y-4">
+                <div class="py-4 space-y-4 overflow-y-auto flex-1 pr-1">
                     <div class="space-y-2">
                         <Label>Role Name</Label>
                         <Input v-model="form.name" placeholder="e.g. Manager" />
@@ -86,21 +87,14 @@
                     </div>
 
                     <div class="space-y-2">
+                        <Label>Description</Label>
+                        <Input v-model="form.description" placeholder="e.g. Manager" />
+                        <p v-if="errors.description" class="text-destructive text-xs">{{ errors.description }}</p>
+                    </div>
+
+                    <div class="space-y-2">
                         <Label>Permissions</Label>
-                        <div class="border rounded-md p-4 max-h-60 overflow-y-auto bg-muted/20">
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                <div v-for="permission in allPermissions" :key="permission.id"
-                                    class="flex items-center space-x-2">
-                                    <input :id="'perm-' + permission.id" v-model="form.permissions"
-                                        :value="permission.id" type="checkbox"
-                                        class="rounded border-input text-primary focus:ring-ring h-4 w-4">
-                                        <label :for="'perm-' + permission.id"
-                                            class="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer">
-                                            {{ permission.name }}
-                                        </label>
-                                </div>
-                            </div>
-                        </div>
+                        <PermissionSelector v-model="form.permissions" :allPermissions="allPermissions" />
                     </div>
                 </div>
 
@@ -120,6 +114,7 @@ import { ref, onMounted } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import axios from 'axios';
+import PermissionSelector from '@/components/Permissions/PermissionSelector.vue';
 
 // Shadcn Components
 import { Button } from '@/components/ui/button';
@@ -156,7 +151,9 @@ const errors = ref({});
 
 const form = ref({
     name: '',
-    permissions: []
+    description: '',
+    permissions: [], // Array of { id, access: [] }
+    assignee_type: 'role'
 });
 
 const fetchRoles = async () => {
@@ -170,7 +167,7 @@ const fetchRoles = async () => {
 
 const fetchPermissions = async () => {
     try {
-        const res = await axios.get('/app/permissions'); // Defined in web routes as /app/permissions
+        const res = await axios.get('/app/permissions');
         allPermissions.value = res.data;
     } catch (e) {
         console.warn("Error fetching permissions", e);
@@ -184,15 +181,57 @@ onMounted(() => {
 
 const openModal = (role = null) => {
     errors.value = {};
+
     if (role) {
         isEditing.value = true;
         editingId.value = role.id;
         form.value.name = role.name;
-        form.value.permissions = role.permissions ? role.permissions.map(p => p.id) : [];
+        form.value.description = role.description || '';
+        form.value.assignee_type = 'role';
+
+        // Populate form.permissions for the component
+        const perms = [];
+        const sourcePermissions = role.assigned_permissions || role.permissions;
+
+        console.log('Index.vue: Role data received:', role);
+        console.log('Index.vue: Source permissions:', sourcePermissions);
+
+        if (sourcePermissions && sourcePermissions.length > 0) {
+            sourcePermissions.forEach(p => {
+                // Determine ID: permission_id if coming from assigned_permissions, or id if from permissions
+                const permId = p.permission_id || (p.permission && p.permission.id) || p.id;
+
+                let access = [];
+                // Check direct access field (assigned_permissions) or pivot access (old way)
+                let rawAccess = p.access || (p.pivot ? p.pivot.access : null);
+
+                if (rawAccess) {
+                    if (Array.isArray(rawAccess)) {
+                        access = rawAccess;
+                    } else if (typeof rawAccess === 'string') {
+                        try {
+                            // Handle potential double encoding or simple string
+                            const parsed = JSON.parse(rawAccess);
+                            access = Array.isArray(parsed) ? parsed : [];
+                        } catch (e) {
+                            console.warn('Failed to parse access for permission', p.id, rawAccess);
+                            access = [];
+                        }
+                    }
+                }
+
+                // Only add if we have a valid permission ID
+                if (permId) {
+                    perms.push({ id: permId, access: access });
+                }
+            });
+        }
+        console.log('Index.vue: Setting form.permissions to', JSON.parse(JSON.stringify(perms)));
+        form.value.permissions = perms;
     } else {
         isEditing.value = false;
         editingId.value = null;
-        form.value = { name: '', permissions: [] };
+        form.value = { name: '', description: '', assignee_type: 'role', permissions: [] };
     }
     showModal.value = true;
 };
@@ -203,6 +242,8 @@ const closeModal = () => {
 
 const saveRole = async () => {
     try {
+        console.log('saveRole: form.value =', JSON.stringify(form.value, null, 2));
+        // Form permissions are already in correct format thanks to PermissionSelector
         if (isEditing.value) {
             await axios.put(`/app/roles/${editingId.value}`, form.value);
         } else {

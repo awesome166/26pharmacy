@@ -37,7 +37,10 @@ const localItems = ref<any[]>([]);
 // Initialize state when modal opens or sale data loads
 watch(
   [() => props.open, () => props.sale],
-  ([isOpen, newSale], [oldOpen, oldSale] = []) => {
+  (newValues, oldValues) => {
+    const [isOpen, newSale] = newValues;
+    const [oldOpen, oldSale] = oldValues || [];
+
     if (isOpen && newSale) {
       // Initialize if just opened OR if sale data changed (e.g. loaded async)
       if (!oldOpen || newSale.id !== oldSale?.id) {
@@ -47,13 +50,20 @@ watch(
         form.other_reason = '';
 
         // Initialize local items with UI state merged
-        localItems.value = newSale.items.map((item: any) => ({
-          ...item,
-          ui_checked: false,                    // Selection state
-          ui_quantity: Number(item.quantity),   // Return quantity as number
-          ui_restock: true,                     // Restock checkbox
-          ui_condition: 'Good'                  // Condition select
-        }));
+        localItems.value = newSale.items.map((item: any) => {
+          const returned = Number(item.return_quantity || 0);
+          const available = Number(item.quantity) - returned;
+
+          return {
+            ...item,
+            ui_checked: false,                    // Selection state
+            ui_quantity: available > 0 ? available : 0,   // Default to max available
+            ui_restock: true,                     // Restock checkbox
+            ui_condition: 'Good',                  // Condition select
+            available_quantity: available,
+            returned_quantity: returned
+          };
+        }).filter(item => item.available_quantity > 0); // Only show returnable items
       }
     }
   },
@@ -133,11 +143,19 @@ const submit = () => {
                 <td class="p-4 align-top">
                   <div class="font-medium">{{ item.drug?.name || 'Unknown Item' }}</div>
                   <div class="text-xs text-muted-foreground">{{ item.price }} / unit</div>
+                  <div v-if="item.returned_quantity > 0" class="text-xs text-red-500">
+                    Already Returned: {{ item.returned_quantity }}
+                  </div>
                 </td>
-                <td class="p-4 align-top text-center">{{ item.quantity }}</td>
+                <td class="p-4 align-top text-center">
+                  {{ item.quantity }}
+                  <span v-if="item.returned_quantity > 0" class="block text-xs text-muted-foreground">
+                    (Avail: {{ item.available_quantity }})
+                  </span>
+                </td>
                 <td class="p-4 align-top">
-                  <Input type="number" v-model.number="localItems[index].ui_quantity" :max="item.quantity" min="1"
-                    class="h-8 w-16" />
+                  <Input type="number" v-model.number="localItems[index].ui_quantity" :max="item.available_quantity"
+                    min="1" class="h-8 w-16" />
                 </td>
                 <td class="p-4 align-top space-y-2">
                   <div class="flex items-center gap-2">

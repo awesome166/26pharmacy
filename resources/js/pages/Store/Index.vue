@@ -51,8 +51,23 @@ const fetchInventory = (url = '/app/store') => {
   });
 };
 
+// --- Tax Logic ---
+const activeTaxes = ref([]);
+
+const fetchTaxes = () => {
+  import('axios').then(({ default: axios }) => {
+    axios.get('/app/taxes', {
+      params: { active_only: 1, per_page: 100 },
+      headers: { 'Accept': 'application/json' }
+    }).then(response => {
+      activeTaxes.value = response.data.data ? response.data.data : response.data;
+    }).catch(err => console.error("Failed to fetch taxes", err));
+  });
+};
+
 onMounted(() => {
   fetchInventory();
+  fetchTaxes();
 });
 
 watch(search, debounce((value) => {
@@ -116,6 +131,7 @@ const addToCart = () => {
       price: productPrice,
       total: productPrice * qtyForm.value.quantity,
       dosage_instructions: qtyForm.value.dosage_instructions,
+      drug_class: selectedProduct.value.drug_class, // Important for tax calc
       // inventory_id: selectedProduct.value.id
     });
   }
@@ -161,8 +177,40 @@ const subtotal = computed(() => {
   return cart.value.reduce((acc, item) => acc + item.total, 0);
 });
 
-const taxRate = 0.08; // 8% Mock
-const taxAmount = computed(() => subtotal.value * taxRate);
+// Dynamic Tax Calculation
+const taxDetails = computed(() => {
+  let totalTax = 0;
+  const taxesApplied = {}; // { 'Tax Name (10%)': amount }
+
+  cart.value.forEach(item => {
+    activeTaxes.value.forEach(tax => {
+      let applies = false;
+      // Case 1: No categories defined OR contains 'all' = Applies to everything
+      if (!tax.applicable_categories || tax.applicable_categories.length === 0 || tax.applicable_categories.includes('all')) {
+        applies = true;
+      }
+      // Case 2: Categories defined = Check match
+      else if (item.drug_class && tax.applicable_categories.includes(item.drug_class)) {
+        applies = true;
+      }
+
+      if (applies) {
+        const taxForLine = item.total * (tax.percentage / 100);
+        totalTax += taxForLine;
+
+        const key = `${tax.tax_name} (${Number(tax.percentage)}%)`;
+        taxesApplied[key] = (taxesApplied[key] || 0) + taxForLine;
+      }
+    });
+  });
+
+  return {
+    total: totalTax,
+    breakdown: taxesApplied
+  };
+});
+
+const taxAmount = computed(() => taxDetails.value.total);
 const totalAmount = computed(() => subtotal.value + taxAmount.value);
 
 const paymentType = ref('cash');
@@ -249,7 +297,7 @@ const finalizeSale = () => {
   const payload = {
     account_id: props.user?.accounts[0]?.id, // Use safe navigation
     user_id: props.user?.id,
-    subtotal: totalAmount.value, // Controller maps logic, Request validates this
+    subtotal: subtotal.value, // Used computed subtotal not totalAmount
     tax_amount: taxAmount.value,
     total_amount: totalAmount.value,
     payment_type: paymentType.value,
@@ -281,7 +329,9 @@ const finalizeSale = () => {
           items: [...cart.value],
           subtotal: subtotal.value,
           taxAmount: taxAmount.value,
+          taxDetails: { ...taxDetails.value.breakdown }, // Snapshot tax details
           totalAmount: totalAmount.value,
+          totalReturnedAmount: 0,
           paymentType: paymentType.value,
           cashReceived: cashReceived.value,
           change: changeAmount.value,
@@ -327,12 +377,18 @@ const viewSaleReceipt = (sale: any) => {
     })
       .then(response => {
         const saleData = response.data.data || response.data;
+        // Reconstruct tax details if not stored (simplified for now, ideally backend stores snapshot)
+        // For historic sales, we might verify stored tax_amount vs assumed.
+        // For now, just show total tax as "Tax" if breakdown missing.
+
         lastSaleData.value = {
           id: saleData.id,
           items: saleData.items || [],
           subtotal: saleData.subtotal_amount,
           taxAmount: saleData.tax_amount,
+          taxDetails: { 'Tax': saleData.tax_amount }, // Fallback
           totalAmount: saleData.total_amount,
+          totalReturnedAmount: Number(saleData.total_returned_amount ?? 0),
           paymentType: saleData.payment_type,
           cashReceived: saleData.cash_received,
           change: saleData.change_amount,
@@ -365,6 +421,14 @@ const printDosageInstructions = (sale: any) => {
 const printReceipt = () => {
   const printWindow = window.open('', '_blank');
   if (!printWindow) return;
+
+  // Format Tax Rows
+  const taxRows = Object.entries(lastSaleData.value?.taxDetails || {}).map(([name, amount]) => `
+     <div class="row">
+        <span class="tax-name">${name}:</span>
+        <span>${formatCurrency(amount)}</span>
+    </div>
+  `).join('');
 
   const receiptHtml = `
     <!DOCTYPE html>
@@ -402,6 +466,10 @@ const printReceipt = () => {
           display: flex;
           justify-content: space-between;
           margin: 5px 0;
+        }
+        .tax-name {
+            font-size: 0.9em;
+            color: #444;
         }
         .totals {
           border-top: 2px solid #000;
@@ -455,14 +523,26 @@ const printReceipt = () => {
           <span>Subtotal:</span>
           <span>${formatCurrency(lastSaleData.value?.subtotal)}</span>
         </div>
-        <div class="row">
-          <span>Tax (8%):</span>
-          <span>${formatCurrency(lastSaleData.value?.taxAmount)}</span>
-        </div>
+
+        ${taxRows}
+
         <div class="row total">
           <span>TOTAL:</span>
-          <span>${formatCurrency(lastSaleData.value?.totalAmount)}</span>
+          <span>
+             ${lastSaleData.value.totalReturnedAmount > 0
+      ? `<s style="font-size: 0.8em; color: #999; margin-right: 5px;">${formatCurrency(lastSaleData.value.totalAmount + lastSaleData.value.totalReturnedAmount)}</s>`
+      : ''}
+             ${formatCurrency(lastSaleData.value.totalAmount)}
+          </span>
         </div>
+
+         ${lastSaleData.value.totalReturnedAmount > 0 ? `
+            <div class="row" style="color: #666; font-size: 0.9em;">
+                <span>Returned Amount:</span>
+                <span>-${formatCurrency(lastSaleData.value.totalReturnedAmount)}</span>
+            </div>
+        ` : ''}
+
         ${lastSaleData.value?.paymentType === 'cash' ? `
           <div class="row">
             <span>Cash Received:</span>
@@ -470,7 +550,12 @@ const printReceipt = () => {
           </div>
           <div class="row">
             <span>Change:</span>
-            <span>${formatCurrency(lastSaleData.value?.change)}</span>
+            <span>
+                ${lastSaleData.value.totalReturnedAmount > 0
+        ? `<s style="font-size: 0.8em; color: #999; margin-right: 5px;">${formatCurrency(Math.max(0, lastSaleData.value.cashReceived - (lastSaleData.value.totalAmount + lastSaleData.value.totalReturnedAmount)))}</s>`
+        : ''}
+                ${formatCurrency(Math.max(0, lastSaleData.value.cashReceived - lastSaleData.value.totalAmount))}
+            </span>
           </div>
         ` : ''}
         <div class="row">
@@ -489,9 +574,9 @@ const printReceipt = () => {
           window.print();
         };
       <` + `/script>
-<` + `/body>
+    <` + `/body>
 
-<` + `/html>
+    <` + `/html>
 `;
 
   printWindow.document.write(receiptHtml);
@@ -556,7 +641,7 @@ const formatDate = (dateString: string | number | Date) => {
                     <div class="text-xs text-muted-foreground">{{ item.location }}</div>
                   </td>
                   <td class="p-4 align-middle text-right">
-                    <Button size="icon" class="bg-emerald-200 hover:bg-emerald-200">
+                    <Button size="icon" class="bg-slate-900 hover:bg-slate-800">
                       <Plus class="h-4 w-4" />
                     </Button>
                   </td>
@@ -596,6 +681,15 @@ const formatDate = (dateString: string | number | Date) => {
           <!-- Cart Items -->
           <div class="flex-1 overflow-y-auto p-4 space-y-2">
             <!-- Empty Cart - Show Recent Sales -->
+
+            <!-- DEBUG AREA -->
+            <!-- <div class="text-xs font-mono p-2 bg-yellow-100 dark:text-black mb-2 rounded">
+              <p>Active Taxes: {{ activeTaxes.length }}</p>
+              <div v-for="tax in activeTaxes" :key="tax.id">
+                {{ tax.tax_name }} ({{ tax.percentage }}%) - Cats: {{ tax.applicable_categories?.length ? tax.applicable_categories.join(', ') : 'ALL' }}
+              </div>
+            </div> -->
+
             <div v-if="cart.length === 0">
               <div class="text-center text-muted-foreground py-4 border-b">
                 Cart is empty
@@ -626,6 +720,10 @@ const formatDate = (dateString: string | number | Date) => {
                         </div>
                         <div class="text-xs text-muted-foreground capitalize">
                           {{ sale.payment_type }}
+                          <span v-if="sale.returns_exists"
+                            class="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
+                            Returned
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -707,9 +805,17 @@ const formatDate = (dateString: string | number | Date) => {
                 <span class="text-muted-foreground">Subtotal</span>
                 <span>{{ formatCurrency(subtotal) }}</span>
               </div>
-              <div class="flex justify-between text-sm">
-                <span class="text-muted-foreground">Tax (8%)</span>
-                <span>{{ formatCurrency(taxAmount) }}</span>
+              <template v-if="Object.keys(taxDetails.breakdown).length > 0">
+                <template v-for="(amount, name) in taxDetails.breakdown" :key="name">
+                  <div class="flex justify-between text-sm">
+                    <span class="text-muted-foreground">{{ name }}</span>
+                    <span>{{ formatCurrency(amount) }}</span>
+                  </div>
+                </template>
+              </template>
+              <div v-else class="flex justify-between text-sm">
+                <span class="text-muted-foreground">Tax</span>
+                <span>{{ formatCurrency(0) }}</span>
               </div>
               <div class="flex justify-between text-2xl font-bold pt-2 border-t">
                 <span>Total</span>

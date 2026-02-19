@@ -42,6 +42,7 @@ class StoreController extends Controller
                     'selling_price' => $item->selling_price,
                     'cost_price' => $item->cost_price,
                     'location' => $item->location,
+                    'drug_class' => $item->drug?->drug_class, // Added for tax calculation
                     'is_active' => $item->is_active,
                 ];
             });

@@ -135,7 +135,7 @@ class SaleService
      */
     public function getAllSales(int $perPage = 15, array $filters = [], string $sortBy = 'finalized_at', string $sortDirection = 'desc')
     {
-        $query = \App\Models\Sale::query();
+        $query = \App\Models\Sale::query()->withExists('returns');
 
         // Apply date range filters
         if (!empty($filters['start_date'])) {

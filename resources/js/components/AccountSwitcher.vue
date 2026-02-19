@@ -13,7 +13,7 @@ import { useAccount } from "@/composables/useAccount"
 
 const props = defineProps<{
   accounts: {
-    id: string
+    id: number | string
     name: string
   }[]
 }>()

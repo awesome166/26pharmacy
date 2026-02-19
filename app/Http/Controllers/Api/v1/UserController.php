@@ -48,7 +48,8 @@ class UserController extends Controller
             'password' => 'required|string|min:8',
             'role_id' => 'nullable|exists:roles,id',
             'permissions' => 'nullable|array',
-            'permissions.*' => 'exists:permissions,id',
+            'permissions.*.id' => 'required|exists:permissions,id',
+            'permissions.*.access' => 'nullable|array',
             'is_active' => 'boolean'
         ]);
 
@@ -76,7 +77,8 @@ class UserController extends Controller
             'password' => 'nullable|string|min:8',
             'role_id' => 'nullable|exists:roles,id',
             'permissions' => 'nullable|array',
-            'permissions.*' => 'exists:permissions,id',
+            'permissions.*.id' => 'required|exists:permissions,id',
+            'permissions.*.access' => 'nullable|array',
             'is_active' => 'boolean'
         ]);
 

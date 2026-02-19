@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { Head, router, usePage } from '@inertiajs/vue3';
 import { useAccount } from '@/composables/useAccount';
 import AppLayout from '@/layouts/AppLayout.vue';
@@ -24,26 +24,51 @@ const exists = ref(props.exists);
 // Work directly with config data from server
 const config = ref({ ...props.config });
 
+watch(() => props.config, (newVal) => {
+  config.value = { ...newVal };
+}, { deep: true });
+
+watch(() => props.exists, (newVal) => {
+  exists.value = newVal;
+});
+
+onMounted(() => {
+  router.reload({ only: ['config'] });
+});
+
 const saveconfig = async () => {
   saving.value = true;
   try {
+    const payload = { ...config.value };
+
+    // isPlatformAdmin is true when currentAccountId is NOT null (i.e. it IS a Tenant)
+    // We want to prevent Tenants from sending system_* keys
+    if (isPlatformAdmin.value) {
+      Object.keys(payload).forEach((key) => {
+        if (key.startsWith('system_')) {
+          delete payload[key];
+        }
+      });
+    }
+
     let res;
     if (exists.value) {
       // Update
-      res = await axios.patch('/app/config', { settings: config.value });
+      res = await axios.patch('/app/config', { settings: payload });
     } else {
       // First time create
-      res = await axios.post('/app/config', { settings: config.value });
+      res = await axios.post('/app/config', { settings: payload });
       exists.value = true;
     }
 
-    // Fetch fresh config from server to ensure UI matches database
-    const freshRes = await axios.get('/app/config');
-    config.value = freshRes.data.config;
-
-    // Reload Inertia page to refresh shared props (auth.settings)
+    // Reload Inertia page to refresh shared props (auth.settings) and config
     // This ensures all components get the updated settings
-    router.reload({ only: ['auth'] });
+    router.reload({
+      only: ['auth', 'config'],
+      onSuccess: () => {
+        config.value = { ...props.config };
+      },
+    });
 
   } catch (e) {
     console.error('Failed to save config', e);
@@ -55,9 +80,7 @@ const saveconfig = async () => {
 
 
 const isPlatformAdmin = computed(() => {
-  console.log(account.currentAccountId.value)
-  return account.currentAccountId.value === null ? false : true;
-
+  return !!account.currentAccountId.value;
 });
 </script>
 
@@ -73,9 +96,9 @@ const isPlatformAdmin = computed(() => {
     </template>
 
     <div class="py-12">
-      <div class="mx-auto max-w-7xl sm:px-6 lg:px-8">
+      <div class=" sm:px-6 lg:px-8">
         <div class="grid gap-6">
-          {{ account.currentAccountId.value === null ? 'Admin' : account.currentAccountId.value }}
+          <!-- {{ account.currentAccountId.value === null ? 'Admin' : account.currentAccountId.value }} -->
           <!-- Inventory Settings -->
           <Card v-if="isPlatformAdmin">
             <CardHeader>
@@ -167,6 +190,20 @@ const isPlatformAdmin = computed(() => {
                 </div>
               </Label>
 
+              <!-- Loyalty Program -->
+              <Label
+                class="hover:bg-accent/50 flex items-start gap-3 rounded-lg border p-3 has-[[aria-checked=true]]:border-blue-600 has-[[aria-checked=true]]:bg-blue-50 dark:has-[[aria-checked=true]]:border-blue-900 dark:has-[[aria-checked=true]]:bg-blue-950">
+                <Checkbox id="sales_enable_loyalty" v-model="config.sales_add_tax"
+                  class="data-[state=checked]:border-blue-600 data-[state=checked]:bg-blue-600 data-[state=checked]:text-white dark:data-[state=checked]:border-blue-700 dark:data-[state=checked]:bg-blue-700 mt-1" />
+                <div class="grid gap-1.5 font-normal">
+                  <p class="text-sm leading-none font-medium">
+                    Add Tax
+                  </p>
+                  <p class="text-muted-foreground text-sm">
+                    Add taxes to sales.
+                  </p>
+                </div>
+              </Label>
               <!-- Loyalty Program -->
               <Label
                 class="hover:bg-accent/50 flex items-start gap-3 rounded-lg border p-3 has-[[aria-checked=true]]:border-blue-600 has-[[aria-checked=true]]:bg-blue-50 dark:has-[[aria-checked=true]]:border-blue-900 dark:has-[[aria-checked=true]]:bg-blue-950">

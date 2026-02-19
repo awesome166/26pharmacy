@@ -104,4 +104,10 @@ Route::middleware(['auth'])->prefix('app')->group(function () {
     Route::get('config', [SystemSettingController::class, 'index'])->name('config.index');
     Route::post('config', [SystemSettingController::class, 'store'])->name('config.store');
     Route::patch('config', [SystemSettingController::class, 'update'])->name('config.update');
+    Route::resource('taxes', \App\Http\Controllers\Api\v1\TaxRateController::class);
+
+    // Online Devices
+    Route::get('settings/online-devices', function () {
+        return Inertia::render('Settings/OnlineDevices');
+    })->name('settings.online-devices');
 });

@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Api\v1;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use App\Services\EventLedgerService;
+use App\Events\SyncUpdateAvailable;
 
 class CloudSyncController extends Controller
 {
@@ -15,30 +15,29 @@ class CloudSyncController extends Controller
      */
     public function receiveBatch(Request $request)
     {
-        // In a real app, strict validation of the hash chain from the branch is needed here.
-        // For this implementation, we accept valid events and assign global IDs.
-
         $request->validate([
             'events' => 'required|array',
-            'events.*.event_id' => 'required',
-            'events.*.hash' => 'required',
-            'events.*.previous_hash' => 'present',
-            'events.*.branch_id' => 'required',
+            'events.*.id' => 'required', // Changed from event_id to id
+            'events.*.event_hash' => 'required', // Changed from hash to event_hash
+            // 'events.*.previous_hash' => 'present',
+            // 'events.*.branch_id' => 'required', // account_id check
         ]);
 
         $events = $request->input('events', []);
         $affected = 0;
+        $tenantId = null;
 
-        DB::transaction(function () use ($events, &$affected) {
-            // Lock for global sequencing if needed, or rely on auto-increment/sequence generator
-            // Here we assume a simple centralized SQL sequence or max+1 strategy for demonstration
-
-
+        DB::transaction(function () use ($events, &$affected, &$tenantId) {
             $lastGlobal = DB::table('event_ledger')->max('global_sequence') ?? 0;
 
             foreach ($events as $eventData) {
-                // Check idempotency: does this event_id already exist?
-                $exists = DB::table('event_ledger')->where('event_id', $eventData['event_id'])->exists();
+                // Idempotency check using 'id'
+                $exists = DB::table('event_ledger')->where('id', $eventData['id'])->exists();
+
+                // Capture tenant ID for broadcasting
+                if (!$tenantId && isset($eventData['account_id'])) {
+                    $tenantId = $eventData['account_id'];
+                }
 
                 if (!$exists) {
                     $lastGlobal++;
@@ -46,13 +45,21 @@ class CloudSyncController extends Controller
                     // Assign global sequence
                     $eventData['global_sequence'] = $lastGlobal;
                     $eventData['received_at_cloud'] = now();
+                    $eventData['synced_at'] = now();
 
-                    // Insert
+                    // Remove any fields that shouldn't be inserted directly if data doesn't match schema exactly
+                    // For now assuming payload matches DB schema columns.
+                    // Validation of payload structure is recommended in production.
+
                     DB::table('event_ledger')->insert($eventData);
                     $affected++;
                 }
             }
         });
+
+        if ($affected > 0 && $tenantId) {
+            SyncUpdateAvailable::dispatch($tenantId);
+        }
 
         return response()->json(['processed' => $affected]);
     }
@@ -64,6 +71,9 @@ class CloudSyncController extends Controller
     {
         $lastKnownGlobal = $request->query('after_global_sequence', 0);
         $limit = $request->query('limit', 100);
+
+        // Security: Filter by tenant/account_id if needed, assuming auth middleware handles context
+        // $accountId = $request->user()->account_id ?? ...
 
         $events = DB::table('event_ledger')
             ->where('global_sequence', '>', $lastKnownGlobal)

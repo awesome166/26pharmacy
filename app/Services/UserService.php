@@ -133,31 +133,84 @@ class UserService
     }
 
     /**
-     * Sync direct permissions for a user
+     * Sync direct permissions for a user using a diff/merge approach.
+     * Accepts the PermissionSelector payload: [{ id: string, access: string[] }]
+     *
+     * - Permissions in the new list but not existing → INSERT
+     * - Permissions in both lists with changed access → UPDATE
+     * - Permissions that existed but are not in the new list → DELETE
      */
-    protected function syncDirectPermissions(\App\Models\User $user, array $permissionIds, ?string $tenantId)
+    protected function syncDirectPermissions(\App\Models\User $user, array $permissions, ?string $tenantId)
     {
-        // 1. Delete existing direct assignments for this user
-        \AbacPermissions\Models\AssignedPermission::where('assignee_type', 'user')
-            ->where('assignee_id', $user->id)
-            ->delete();
-
-        // 2. Create new assignments
-        $records = [];
         $now = now();
-        foreach ($permissionIds as $permId) {
-            $records[] = [
-                'assignee_type' => 'user',
-                'assignee_id' => $user->id,
-                'permission_id' => $permId,
-                'account_id' => $tenantId,
-                'created_at' => $now,
-                'updated_at' => $now,
-            ];
+
+        // Build a map of incoming: permId => access (JSON string or null)
+        $incoming = [];
+        foreach ($permissions as $perm) {
+            if (is_string($perm)) {
+                $permId = $perm;
+                $access = null;
+            } else {
+                $permId = $perm['id'] ?? null;
+                $access = isset($perm['access']) && is_array($perm['access'])
+                    ? json_encode($perm['access'])
+                    : null;
+            }
+            if ($permId) {
+                $incoming[$permId] = $access;
+            }
         }
 
-        if (count($records) > 0) {
-            \AbacPermissions\Models\AssignedPermission::insert($records);
+        // Fetch existing assignments for this user
+        $existing = \AbacPermissions\Models\AssignedPermission::where('assignee_type', 'user')
+            ->where('assignee_id', $user->id)
+            ->get()
+            ->keyBy('permission_id');
+
+        $existingIds = $existing->keys()->all();
+        $incomingIds = array_keys($incoming);
+
+        // IDs to delete (were present, no longer in new list)
+        $toDelete = array_diff($existingIds, $incomingIds);
+        if (!empty($toDelete)) {
+            \AbacPermissions\Models\AssignedPermission::where('assignee_type', 'user')
+                ->where('assignee_id', $user->id)
+                ->whereIn('permission_id', $toDelete)
+                ->delete();
+        }
+
+        // IDs to insert (new, not previously assigned)
+        $toInsert = array_diff($incomingIds, $existingIds);
+        $insertRecords = [];
+        foreach ($toInsert as $permId) {
+            $insertRecords[] = [
+                'id'            => \Illuminate\Support\Str::ulid()->toString(),
+                'assignee_type' => 'user',
+                'assignee_id'   => $user->id,
+                'permission_id' => $permId,
+                'account_id'    => $tenantId,
+                'access'        => $incoming[$permId],
+                'created_at'    => $now,
+                'updated_at'    => $now,
+            ];
+        }
+        if (!empty($insertRecords)) {
+            \AbacPermissions\Models\AssignedPermission::insert($insertRecords);
+        }
+
+        // IDs that exist in both — update access if it changed
+        $toUpdate = array_intersect($existingIds, $incomingIds);
+        foreach ($toUpdate as $permId) {
+            $row       = $existing[$permId];
+            $newAccess = $incoming[$permId];
+            // Normalise existing access for comparison
+            $oldAccess = is_array($row->access)
+                ? json_encode($row->access)
+                : $row->access;
+
+            if ($oldAccess !== $newAccess) {
+                $row->update(['access' => $newAccess, 'updated_at' => $now]);
+            }
         }
     }
 }

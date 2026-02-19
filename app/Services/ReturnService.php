@@ -64,6 +64,9 @@ class ReturnService
 
             $returnItems = [];
 
+            $totalRefundAmount = 0;
+            $totalTaxRefund = 0;
+
             foreach ($returnData['items'] as $item) {
                 $saleItem = $sale->items->where('id', $item['sale_item_id'])->first();
 
@@ -71,6 +74,15 @@ class ReturnService
                 // Or trust frontend? Trust frontend but maybe validate cap.
                 // For now, let's assume simple unit price refund
                 $refundAmount = $saleItem->price * $item['quantity']; // Simple calculation
+                $totalRefundAmount += $refundAmount;
+
+                // Calculate prorated tax refund
+                // Formula: (Returned Qty / Original Qty) * Original Tax Amount
+                $taxRefund = 0;
+                if ($saleItem->quantity > 0) {
+                     $taxRefund = ($item['quantity'] / $saleItem->quantity) * $saleItem->tax_amount;
+                }
+                $totalTaxRefund += $taxRefund;
 
                 $returnItem = SalesReturnItem::create([
                     'id' => Str::ulid(),
@@ -83,6 +95,13 @@ class ReturnService
                 ]);
 
                 $returnItems[] = $returnItem;
+
+                // Update SaleItem return status
+                $saleItem->increment('return_quantity', $item['quantity']);
+                $saleItem->update([
+                    'is_returned' => true, // Mark as having returns
+                    'return_date' => now(),
+                ]);
 
                 // Restock Inventory if requested
                 if ($item['restock']) {
@@ -107,6 +126,14 @@ class ReturnService
                     ]);
                 }
             }
+
+            // Update Sale totals
+            $sale->increment('total_returned_amount', $totalRefundAmount);
+            // We decrease the total_amount to reflect the NET value
+            $sale->decrement('total_amount', $totalRefundAmount);
+            // Decrease tax and subtotal
+            $sale->decrement('tax_amount', $totalTaxRefund);
+            $sale->decrement('subtotal_amount', ($totalRefundAmount - $totalTaxRefund)); // Assuming total = subtotal + tax
 
             // Emit Event
             $eventData = [

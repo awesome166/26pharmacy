@@ -4,7 +4,7 @@
     <Head title="Pharmacy Accounts" />
 
     <div class="py-12">
-      <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+      <div class=" sm:px-6 lg:px-8">
         <Card>
           <CardHeader class="flex flex-row items-center justify-between">
             <div>
@@ -73,7 +73,7 @@
 
     <!-- Create/Edit Modal -->
     <Dialog :open="showModal" @update:open="val => !val && closeModal()">
-      <DialogContent class="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent class="sm:max-w-3xl overflow-hidden flex flex-col max-h-[92vh]">
         <DialogHeader>
           <DialogTitle>{{ isEditing ? 'Edit Pharmacy' : 'Create New Pharmacy' }}</DialogTitle>
           <DialogDescription>
@@ -82,7 +82,7 @@
           </DialogDescription>
         </DialogHeader>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 py-4 overflow-y-auto flex-1 pr-1">
           <!-- Pharmacy Name -->
           <div class="md:col-span-2 space-y-2">
             <Label>Pharmacy Name *</Label>
@@ -157,6 +157,14 @@
               class="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
               placeholder="Street address, City, State, ZIP"></textarea>
             <p v-if="errors['metadata.address']" class="text-destructive text-xs">{{ errors['metadata.address'] }}</p>
+          </div>
+
+          <!-- Permissions -->
+          <div class="md:col-span-2 space-y-2 pt-2 border-t">
+            <Label>Default Permissions
+              <span class="text-xs font-normal text-muted-foreground ml-1">(assigned to this pharmacy account)</span>
+            </Label>
+            <PermissionSelector v-model="form.permissions" :allPermissions="allPermissions" />
           </div>
         </div>
 
@@ -237,6 +245,7 @@ import { ref, onMounted } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import axios from 'axios';
+import PermissionSelector from '@/components/Permissions/PermissionSelector.vue';
 
 // Shadcn Components
 import { Button } from '@/components/ui/button';
@@ -274,6 +283,7 @@ const breadcrumbs = [
 ];
 
 const accounts = ref({ data: [] });
+const allPermissions = ref([]);
 const showModal = ref(false);
 const isEditing = ref(false);
 const editingId = ref(null);
@@ -288,6 +298,7 @@ const selectedUserId = ref('');
 const form = ref({
   name: '',
   plan: '',
+  permissions: [],
   metadata: {
     phone: '',
     email: '',
@@ -308,6 +319,15 @@ const fetchAccounts = async () => {
   }
 };
 
+const fetchPermissions = async () => {
+  try {
+    const res = await axios.get('/app/permissions');
+    allPermissions.value = res.data;
+  } catch (e) {
+    console.warn("Error fetching permissions", e);
+  }
+};
+
 const fetchAllUsers = async () => {
   try {
     const res = await axios.get('/app/users');
@@ -320,6 +340,7 @@ const fetchAllUsers = async () => {
 onMounted(() => {
   fetchAccounts();
   fetchAllUsers();
+  fetchPermissions();
 });
 
 const openModal = (account = null) => {
@@ -339,12 +360,29 @@ const openModal = (account = null) => {
       address: account.metadata?.address || '',
       license: account.metadata?.license || ''
     };
+    // Pre-populate permissions from eager-loaded assignedPermissions relation.
+    // Shape from API: [{ permission_id, access, permission: { id, name, type } }]
+    const rawPerms = account.assigned_permissions ?? [];
+    form.value.permissions = rawPerms.map(p => {
+      const permId = p.permission?.id ?? p.permission_id ?? p.id;
+      const rawAccess = p.access;
+      let access = [];
+      if (rawAccess) {
+        if (Array.isArray(rawAccess)) {
+          access = rawAccess;
+        } else {
+          try { access = JSON.parse(rawAccess) ?? []; } catch { access = []; }
+        }
+      }
+      return { id: permId, access };
+    });
   } else {
     isEditing.value = false;
     editingId.value = null;
     form.value = {
       name: '',
       plan: '',
+      permissions: [],
       metadata: {
         phone: '',
         email: '',
@@ -368,7 +406,8 @@ const saveAccount = async () => {
     const payload = {
       name: form.value.name,
       plan: form.value.plan || null,
-      metadata: form.value.metadata
+      metadata: form.value.metadata,
+      permissions: form.value.permissions,
     };
 
     if (isEditing.value) {

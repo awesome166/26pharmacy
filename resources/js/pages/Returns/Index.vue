@@ -110,7 +110,7 @@ const formatCurrency = (val: string | number) => {
   <Head title="Returns Management" />
 
   <AppLayout :breadcrumbs="breadcrumbs">
-    <div class="p-6 space-y-6 max-w-7xl mx-auto w-full">
+    <div class="p-6 space-y-6 w-full">
       <!-- Header -->
       <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>

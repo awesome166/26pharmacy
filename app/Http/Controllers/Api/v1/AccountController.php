@@ -4,7 +4,8 @@ namespace App\Http\Controllers\Api\v1;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use AbacPermissions\Models\Account;
+use App\Models\Account;
+use AbacPermissions\Models\AssignedPermission;
 use App\Models\User;
 use Inertia\Inertia;
 use Illuminate\Support\Str;
@@ -30,13 +31,17 @@ class AccountController extends Controller
              });
         }
 
-        $accounts = $query->paginate(15);
+        $accounts = $query
+            ->with(['assignedPermissions.permission'])
+            ->paginate(15);
 
         if ($request->wantsJson() && !$request->header('X-Inertia')) {
             return response()->json($accounts);
         }
 
-        return Inertia::render('Accounts/Index', ['accounts' => $accounts]);
+        return Inertia::render('Accounts/Index', [
+            'accounts' => $accounts,
+        ]);
     }
 
     /**
@@ -45,22 +50,32 @@ class AccountController extends Controller
     public function store(Request $request)
     {
         $data = $request->validate([
-            'name' => 'required|string|max:255',
-            'plan' => 'nullable|string|in:basic,premium,enterprise',
-            'metadata' => 'nullable|array',
-            'metadata.phone' => 'nullable|string|max:50',
-            'metadata.email' => 'nullable|email|max:255',
-            'metadata.logo' => 'nullable|string|max:500',
+            'name'                    => 'required|string|max:255',
+            'plan'                    => 'nullable|string|in:basic,premium,enterprise',
+            'metadata'                => 'nullable|array',
+            'metadata.phone'          => 'nullable|string|max:50',
+            'metadata.email'          => 'nullable|email|max:255',
+            'metadata.logo'           => 'nullable|string|max:500',
             'metadata.business_hours' => 'nullable|string|max:500',
-            'metadata.contact_email' => 'nullable|email|max:255',
-            'metadata.address' => 'nullable|string|max:1000',
-            'metadata.license' => 'nullable|string|max:255',
+            'metadata.contact_email'  => 'nullable|email|max:255',
+            'metadata.address'        => 'nullable|string|max:1000',
+            'metadata.license'        => 'nullable|string|max:255',
+            'permissions'             => 'nullable|array',
+            'permissions.*.id'        => 'required|exists:permissions,id',
+            'permissions.*.access'    => 'nullable|array',
         ]);
 
+        // Separate permissions from model fields before creating
+        $permissions = $data['permissions'] ?? [];
+        unset($data['permissions']);
 
         $data['slug'] = Str::slug($data['name']);
 
         $account = Account::create($data);
+
+        if (!empty($permissions)) {
+            $this->syncPermissions($account, $permissions);
+        }
 
         return response()->json($account->load('users'), 201);
     }
@@ -70,7 +85,9 @@ class AccountController extends Controller
      */
     public function show($id)
     {
-        $account = Account::withCount('users')->findOrFail($id);
+        $account = Account::withCount('users')
+            ->with(['assignedPermissions.permission'])
+            ->findOrFail($id);
 
         return response()->json($account);
     }
@@ -83,21 +100,34 @@ class AccountController extends Controller
         $account = Account::findOrFail($id);
 
         $data = $request->validate([
-            'name' => 'required|string|max:255',
-            'plan' => 'nullable|string|in:basic,premium,enterprise',
-            'metadata' => 'nullable|array',
-            'metadata.phone' => 'nullable|string|max:50',
-            'metadata.email' => 'nullable|email|max:255',
-            'metadata.logo' => 'nullable|string|max:500',
+            'name'                    => 'required|string|max:255',
+            'plan'                    => 'nullable|string|in:basic,premium,enterprise',
+            'metadata'                => 'nullable|array',
+            'metadata.phone'          => 'nullable|string|max:50',
+            'metadata.email'          => 'nullable|email|max:255',
+            'metadata.logo'           => 'nullable|string|max:500',
             'metadata.business_hours' => 'nullable|string|max:500',
-            'metadata.contact_email' => 'nullable|email|max:255',
-            'metadata.address' => 'nullable|string|max:1000',
-            'metadata.license' => 'nullable|string|max:255',
+            'metadata.contact_email'  => 'nullable|email|max:255',
+            'metadata.address'        => 'nullable|string|max:1000',
+            'metadata.license'        => 'nullable|string|max:255',
+            'permissions'             => 'nullable|array',
+            'permissions.*.id'        => 'required|exists:permissions,id',
+            'permissions.*.access'    => 'nullable|array',
         ]);
+
+        // Separate permissions from model fields before saving
+        $permissions    = $data['permissions'] ?? null;
+        $hasPermissions = array_key_exists('permissions', $data);
+        unset($data['permissions']);
 
         $account->update($data);
 
-        return response()->json($account->load('users'));
+        // Sync permissions only if the key was present in the request
+        if ($hasPermissions) {
+            $this->syncPermissions($account, $permissions ?? []);
+        }
+
+        return response()->json($account->load(['users', 'assignedPermissions.permission']));
     }
 
     /**
@@ -172,5 +202,52 @@ class AccountController extends Controller
             'message' => 'User detached successfully',
             'users' => $account->users()->get()
         ]);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    //  Helpers
+    // ─────────────────────────────────────────────────────────────────────
+
+    /**
+     * Sync permissions for an account.
+     * Accepts the PermissionSelector payload: [{ id: string, access: string[] }]
+     */
+    protected function syncPermissions(Account $account, array $permissions): void
+    {
+        // Delete all existing assigned permissions for this account
+        AssignedPermission::where('assignee_type', 'account')
+            ->where('assignee_id', $account->id)
+            ->delete();
+
+        if (empty($permissions)) {
+            return;
+        }
+
+        $records = [];
+        $now     = now();
+
+        foreach ($permissions as $perm) {
+            $permId = $perm['id'] ?? null;
+            if (!$permId) continue;
+
+            $access = isset($perm['access']) && is_array($perm['access'])
+                ? json_encode($perm['access'])
+                : null;
+
+            $records[] = [
+                'id'            => Str::ulid()->toString(),
+                'assignee_type' => 'account',
+                'assignee_id'   => $account->id,
+                'permission_id' => $permId,
+                'account_id'    => $account->id,   // context = the account itself
+                'access'        => $access,
+                'created_at'    => $now,
+                'updated_at'    => $now,
+            ];
+        }
+
+        if (!empty($records)) {
+            AssignedPermission::insert($records);
+        }
     }
 }

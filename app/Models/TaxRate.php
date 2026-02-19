@@ -10,11 +10,16 @@ class TaxRate extends Model
 {
     use \AbacPermissions\Tenancy\UsesTenant, HasUlids;
 
+    public function account()
+    {
+        return $this->belongsTo(\AbacPermissions\Models\Account::class, 'account_id');
+    }
+
     protected $primaryKey = 'id';
 
     protected $fillable = [
         'id',
-        'tenant_id',
+        'account_id',
         'jurisdiction',
         'tax_name',
         'percentage',
@@ -33,4 +38,8 @@ class TaxRate extends Model
         'effective_to' => 'date',
         'is_active' => 'boolean',
     ];
+
+
+
+
 }

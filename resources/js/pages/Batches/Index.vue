@@ -123,7 +123,7 @@ onMounted(() => {
   <Head title="Batches" />
 
   <AppLayout>
-    <div class="p-6 space-y-6 max-w-7xl mx-auto w-full">
+    <div class="p-6 space-y-6   w-full">
       <!-- Header -->
       <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
@@ -195,7 +195,7 @@ onMounted(() => {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                        <!-- <DropdownMenuLabel>Actions</DropdownMenuLabel> -->
                         <DropdownMenuItem @click="handleEdit(batch)">
                           <Edit class="mr-2 h-4 w-4" />
                           Edit

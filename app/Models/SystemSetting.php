@@ -101,8 +101,29 @@ class SystemSetting extends Model
     }
 
     /**
+     * The canonical list of all config keys with their default values.
+     * These serve as the base layer so missing DB entries always return false.
+     */
+    public static array $defaults = [
+        // Inventory & Stock (tenant settings)
+        'inventory_batch_mode'                      => false,
+        'inventory_prevent_negative_stock'          => false,
+        'inventory_require_approval_for_adjustments'=> false,
+
+        // Sales & POS (tenant settings)
+        'sales_require_prescription'                => false,
+        'sales_add_tax'                             => false,
+        'sales_enable_loyalty'                      => false,
+        'sales_print_auto_receipt'                  => false,
+
+        // System / Platform settings
+        'system_maintenance_mode'                   => false,
+        'system_debug_mode'                         => false,
+    ];
+
+    /**
      * Get merged settings for the current tenant context.
-     * Platform settings serve as defaults, tenant settings override them.
+     * Layers: model defaults (false) → platform DB → tenant DB.
      *
      * @param string|null $accountId Optional account ID, defaults to current tenant context
      * @return array ['settings' => Collection, 'exists' => bool]
@@ -113,34 +134,36 @@ class SystemSetting extends Model
             $accountId = app(TenantContext::class)->getAccountId();
         }
 
-        $cacheKey = "system_settings:merged:{$accountId}";
+        // 1. Start with all-false model defaults
+        $defaults = collect(static::$defaults);
 
-        // return Cache::remember($cacheKey, 3600, function () use ($accountId) {
-            // 1. Get all platform settings (defaults from DB)
-            $platformSettings = self::withoutTenant()
-                ->whereNull('account_id')
-                ->pluck('value', 'key');
+        // 2. Overlay platform DB settings (keys starting with 'system_')
+        $platformSettings = self::withoutTenant()
+            ->whereNull('account_id')
+            ->pluck('value', 'key');
 
-            // 2. Get all tenant settings
-            $tenantSettings = $accountId
-                ? self::where('account_id', $accountId)->pluck('value', 'key')
-                : collect();
+        // 3. Overlay tenant DB settings
+        $tenantSettings = $accountId
+            ? self::where('account_id', $accountId)->pluck('value', 'key')
+            : collect();
 
-            // 3. Merge: Tenant overrides Platform, using DB data only
-            $finalSettings = $platformSettings->merge($tenantSettings)->map(function ($value) {
-                // Cast values to booleans where appropriate
-                if ($value == 1 || $value === 'true' || $value === true) return true;
-                if ($value == 0 || $value === 'false' || $value === false || $value === null) return false;
+        // 4. Merge in order: defaults → platform → tenant
+        $finalSettings = $defaults
+            ->merge($platformSettings)
+            ->merge($tenantSettings)
+            ->map(function ($value) {
+                // Cast values to booleans
+                if ($value === true  || $value == 1 || $value === 'true')  return true;
+                if ($value === false || $value == 0 || $value === 'false' || $value === null) return false;
                 return $value;
             });
 
-            $exists = self::where('account_id', $accountId)->exists();
+        $exists = $accountId ? self::where('account_id', $accountId)->exists() : false;
 
-            return [
-                'settings' => $finalSettings,
-                'exists' => $exists
-            ];
-        // });
+        return [
+            'settings' => $finalSettings,
+            'exists'   => $exists,
+        ];
     }
 
     /**

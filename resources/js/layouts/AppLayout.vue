@@ -10,6 +10,16 @@ interface Props {
 withDefaults(defineProps<Props>(), {
     breadcrumbs: () => [],
 });
+
+import { onMounted } from 'vue';
+import { SyncManager } from '@/services/SyncManager';
+
+onMounted(() => {
+    const accountId = localStorage.getItem('current_account_id');
+    if (accountId) {
+        SyncManager.initialize(accountId);
+    }
+});
 </script>
 
 <template>

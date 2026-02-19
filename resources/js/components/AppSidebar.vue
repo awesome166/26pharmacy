@@ -6,16 +6,28 @@ import AccountSwitcher from '@/components/AccountSwitcher.vue';
 import {
     Sidebar,
     SidebarContent,
-    SidebarFooter,
     SidebarHeader,
     SidebarMenu,
     SidebarMenuButton,
     SidebarMenuItem,
+    SidebarFooter,
 } from '@/components/ui/sidebar';
 import { dashboard } from '@/routes';
 import { type NavItem } from '@/types';
 import { Link, usePage } from '@inertiajs/vue3';
-import { BookOpen, Folder, User, LayoutGrid, ShoppingCart, Package, FileText, ClipboardList, Settings, Archive, RotateCcw } from 'lucide-vue-next';
+import {
+    BookOpen,
+    User,
+    LayoutGrid,
+    ShoppingCart,
+    Package,
+    FileText,
+    ClipboardList,
+    Settings,
+    Archive,
+    RotateCcw,
+    Calculator, // For Accounting
+} from 'lucide-vue-next';
 import AppLogo from './AppLogo.vue';
 
 const mainNavItems: NavItem[] = [
@@ -25,79 +37,131 @@ const mainNavItems: NavItem[] = [
         icon: LayoutGrid,
     },
     {
+        title: 'Accounting',
+        href: '#', // Placeholder for parent
+        icon: Calculator,
+        isActive: usePage().url.startsWith('/accounting') || usePage().url.startsWith('/app/accounts'),
+        items: [
+            {
+                title: 'Dashboard',
+                href: '/accounting',
+            },
+            {
+                title: 'Chart of Accounts',
+                href: '/accounting/accounts',
+            },
+            {
+                title: 'Journal Entries',
+                href: '/accounting/journal-entries',
+            },
+            {
+                title: 'Balance Sheet',
+                href: '/accounting/reports/balance-sheet',
+            },
+            {
+                title: 'Income Statement',
+                href: '/accounting/reports/income-statement',
+            },
+        ],
+    },
+    {
         title: 'Store (POS)',
         href: '/app/store',
         icon: ShoppingCart,
     },
     {
-        title: 'Sales History',
-        href: '/app/sales',
-        icon: LayoutGrid, // Or another icon
-    },
-    {
-        title: 'Returns',
-        href: '/app/returns',
+        title: 'Sales Management',
+        href: '#',
         icon: RotateCcw,
+        isActive: usePage().url.startsWith('/sales') || usePage().url.startsWith('/app/sales'),
+        items: [
+
+            {
+                title: 'Sales History',
+                href: '/app/sales',
+            },
+            {
+                title: 'Returns',
+                href: '/app/returns',
+            },
+        ],
     },
+
     {
         title: 'Inventory',
-        href: '/app/inventory',
+        href: "#",
         icon: Package,
+        items: [
+            {
+                title: 'Inventory',
+                href: '/app/inventory',
+            },
+
+            {
+                title: 'Batches',
+                href: '/app/batches',
+            },
+            {
+                title: 'Drugs',
+                href: '/app/drugs',
+            }
+        ]
+
+
     },
-    {
-        title: 'Batches',
-        href: '/app/batches',
-        icon: Archive,
-    },
+
+
     {
         title: 'Reports',
         href: '/app/reports/daily-sales',
         icon: FileText,
+        items: [
+            {
+                title: 'Reports',
+                href: '/app/reports/daily-sales',
+
+            },
+            {
+                title: 'Audit Trail',
+                href: '/app/audit-trail',
+            }
+
+
+        ]
     },
+
     {
-        title: 'Audit Trail',
-        href: '/app/audit-trail',
-        icon: ClipboardList,
-    },
-    {
-        title: 'Drugs',
-        href: '/app/drugs',
-        icon: BookOpen,
-    },
-    {
-        title: 'Users',
-        href: '/app/users',
-        icon: User,
-    },
-    {
-        title: 'Accounts',
-        href: '/app/accounts',
-        icon: User,
-    },
-    {
-        title: 'Roles',
-        href: '/app/roles',
-        icon: User,
-    },
-    {
-        title: 'Configuration',
-        href: '/app/config',
+        title: 'Settings',
+        href: '#',
         icon: Settings,
+        items: [
+            {
+                title: 'Users',
+                href: '/app/users',
+            },
+            {
+                title: 'Roles',
+                href: '/app/roles',
+            },
+            {
+                title: 'Configuration',
+                href: '/app/config',
+            },
+            {
+                title: 'Tax',
+                href: '/app/taxes',
+            },
+
+            {
+                title: 'Accounts',
+                href: '/app/accounts',
+            },
+        ],
     },
+
 ];
 
-const footerNavItems: NavItem[] = [
-    // {
-    //     title: 'Github Repo',
-    //     href: 'https://github.com/laravel/vue-starter-kit',
-    //     icon: Folder,
-    // },
-    // {
-    //     title: 'Documentation',
-    //     href: 'https://laravel.com/docs/starter-kits#vue',
-    //     icon: BookOpen,
-    // },
-];
+const footerNavItems: NavItem[] = [];
 
 const page = usePage();
 const user = page.props.auth.user;
@@ -109,7 +173,6 @@ const user = page.props.auth.user;
             <SidebarMenu>
                 <SidebarMenuItem>
                     <SidebarMenuButton size="lg" as-child>
-
                         <Link :href="dashboard()">
                             <AppLogo />
                         </Link>

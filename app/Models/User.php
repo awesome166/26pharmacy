@@ -25,6 +25,7 @@ class User extends Authenticatable
     // public $incrementing = false;
     // protected $keyType = 'string';
 
+
     /**
      * The attributes that are mass assignable.
      *
@@ -50,6 +51,9 @@ class User extends Authenticatable
         'two_factor_secret',
         'two_factor_recovery_codes',
         'remember_token',
+        'created_at',
+        'updated_at',
+        'two_factor_confirmed_at',
     ];
 
         /**
@@ -63,9 +67,26 @@ class User extends Authenticatable
             'assigned_permissions',
             'assignee_id',
             'permission_id'
-        );
+        )
+        ->using(\AbacPermissions\Models\AssignedPermission::class)
+        ->withPivot('access');  // expose access so UserResource can read it
     }
 
+
+
+    public function assignedPermissions()
+    {
+        return $this->morphMany(\App\Models\AssignedPermission::class, 'assignee');
+    }
+
+
+
+
+
+    public function getMorphClass()
+    {
+        return 'user';
+    }
 
     /**
      * Get the attributes that should be cast.
@@ -80,6 +101,36 @@ class User extends Authenticatable
             'two_factor_confirmed_at' => 'datetime',
             'is_active' => 'boolean',
         ];
+    }
+
+
+    /// delete this after plugin update
+        public function getAllPermissions(): string
+    {
+        $roleIds = $this->roles()->pluck('id');
+        $accountId = app(\AbacPermissions\Tenancy\TenantContext::class)->getAccountId();
+
+        // Get all assigned permissions for this user's roles and direct assignments
+        $assignments = \AbacPermissions\Models\AssignedPermission::where(function ($query) use ($roleIds, $accountId) {
+            $query->where(function ($q) use ($roleIds) {
+                $q->where('assignee_type', 'role')
+                    ->whereIn('assignee_id', $roleIds);
+            })
+            ->orWhere(function ($q) use ($accountId) {
+                $q->where('assignee_type', 'user')
+                    ->where('assignee_id', $this->id);
+            });
+        })
+        ->with('permission')
+        ->get();
+
+        // Expand each assignment and collect all permission strings
+        $expandedPermissions = $assignments->flatMap(function ($assignment) {
+            return $assignment->getExpandedPermissions();
+        });
+
+        // Return unique permissions as comma-separated string
+        return $expandedPermissions->unique()->sort()->implode(', ');
     }
 
     // // AccessControl Roles & Permissions

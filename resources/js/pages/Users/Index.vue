@@ -4,7 +4,7 @@
         <Head title="Users Management" />
 
         <div class="py-12">
-            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+            <div class=" sm:px-6 lg:px-8">
                 <Card>
                     <CardHeader class="flex flex-row items-center justify-between">
                         <div>
@@ -92,7 +92,7 @@
 
         <!-- Create/Edit Modal -->
         <Dialog :open="showModal" @update:open="val => !val && closeModal()">
-            <DialogContent class="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogContent class="sm:max-w-2xl overflow-hidden flex flex-col max-h-[92vh]">
                 <DialogHeader>
                     <DialogTitle>{{ isEditing ? 'Edit User' : 'Create New User' }}</DialogTitle>
                     <DialogDescription>
@@ -100,7 +100,7 @@
                     </DialogDescription>
                 </DialogHeader>
 
-                <div class="py-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="py-4 space-y-4 overflow-y-auto flex-1 pr-1">
                     <!-- Name -->
                     <div class="space-y-2">
                         <Label>Name</Label>
@@ -116,7 +116,7 @@
                     </div>
 
                     <!-- Password -->
-                    <div class="space-y-2 md:col-span-2">
+                    <div class="space-y-2">
                         <Label>Password</Label>
                         <Input v-model="form.password" type="password"
                             :placeholder="isEditing ? 'Leave empty to keep unchanged' : ''" />
@@ -149,29 +149,11 @@
                     </div>
 
                     <!-- Direct Permissions -->
-                    <div class="md:col-span-2 space-y-2 pt-2 border-t mt-2">
-                        <div @click="showPermissions = !showPermissions"
-                            class="flex items-center justify-between cursor-pointer p-2 hover:bg-muted/50 rounded-md">
-                            <Label class="cursor-pointer font-semibold">Additional Direct Permissions</Label>
-                            <i :class="showPermissions ? 'fa-chevron-up' : 'fa-chevron-down'"
-                                class="fas text-muted-foreground text-xs"></i>
-                        </div>
-
-                        <div v-show="showPermissions"
-                            class="border rounded-md p-4 max-h-48 overflow-y-auto bg-muted/20">
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                <div v-for="perm in availablePermissions" :key="perm.id"
-                                    class="flex items-center space-x-2">
-                                    <input :id="'u-perm-' + perm.id" v-model="form.permissions" :value="perm.id"
-                                        type="checkbox"
-                                        class="rounded border-input text-primary focus:ring-ring h-4 w-4">
-                                        <label :for="'u-perm-' + perm.id"
-                                            class="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer">
-                                            {{ perm.name }}
-                                        </label>
-                                </div>
-                            </div>
-                        </div>
+                    <div class="space-y-2">
+                        <Label>Direct Permissions
+                            <span class="text-xs font-normal text-muted-foreground ml-1">(overrides role)</span>
+                        </Label>
+                        <PermissionSelector v-model="form.permissions" :allPermissions="availablePermissions" />
                     </div>
                 </div>
 
@@ -191,6 +173,8 @@ import { ref, onMounted } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import axios from 'axios';
+
+import PermissionSelector from '@/components/Permissions/PermissionSelector.vue';
 
 // Shadcn Components
 import { Button } from '@/components/ui/button';
@@ -231,7 +215,6 @@ const availablePermissions = ref([]);
 const showModal = ref(false);
 const isEditing = ref(false);
 const editingId = ref(null);
-const showPermissions = ref(false);
 const errors = ref({});
 
 const form = ref({
@@ -278,7 +261,6 @@ onMounted(() => {
 
 const openModal = (user = null) => {
     errors.value = {};
-    showPermissions.value = false;
     if (user) {
         isEditing.value = true;
         editingId.value = user.id;
@@ -287,7 +269,11 @@ const openModal = (user = null) => {
         form.value.password = '';
         form.value.is_active = !!user.is_active;
         form.value.role_id = (user.roles && user.roles.length > 0) ? String(user.roles[0].id) : '';
-        form.value.permissions = user.permissions ? user.permissions.map(p => p.id) : [];
+        // Map user.permissions [{id, name, type, access}] → PermissionSelector format [{id, access}]
+        form.value.permissions = (user.permissions ?? []).map(p => ({
+            id: p.id,
+            access: Array.isArray(p.access) ? p.access : [],
+        }));
     } else {
         isEditing.value = false;
         editingId.value = null;

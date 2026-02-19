@@ -43,9 +43,11 @@ class DrugSeeder extends Seeder
         foreach ($chunks as $chunk) {
             foreach ($chunk as &$drug) {
                 // Generate ID
-                $drug['id'] = (string) Str::ulid();
+                $drug['id'] = (string) Str::ucfirst(Str::ulid());
 
                 // Ensure nullable fields are handled
+                $drug['name'] = Str::ucfirst($drug['name']);
+                $drug['generic_name'] = Str::ucfirst($drug['generic_name']);
                 $drug['route'] = $drug['route'] ?? null;
                 $drug['regulatory_code'] = $drug['regulatory_code'] ?? null;
                 $drug['supplier'] = $drug['supplier'] ?? null;

@@ -29,6 +29,7 @@ class Sale extends Model
         'cash_received',
         'change_amount',
         'finalized_at',
+        'total_returned_amount',
     ];
 
     protected $casts = [
@@ -38,7 +39,9 @@ class Sale extends Model
         'cash_received' => 'decimal:2',
         'change_amount' => 'decimal:2',
         'payment_metadata' => 'array',
+        'payment_metadata' => 'array',
         'finalized_at' => 'datetime',
+        'total_returned_amount' => 'decimal:2',
     ];
 
     public function items()
@@ -49,5 +52,10 @@ class Sale extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(\App\Models\User::class, 'user_id', 'id');
+    }
+
+    public function returns()
+    {
+        return $this->hasMany(\App\Models\SalesReturn::class, 'sale_id', 'id');
     }
 }

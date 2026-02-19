@@ -19,6 +19,7 @@ interface SaleItem {
   price: number;
   total?: number;
   line_total?: number;
+  return_quantity?: number;
   dosage_instructions?: DosageInstructions;
   drug?: {
     name: string;
@@ -32,8 +33,7 @@ interface Sale {
   items: SaleItem[];
   subtotal?: number;
   subtotal_amount?: number;
-  tax_amount?: number;
-  taxAmount?: number;
+  taxDetails?: Record<string, number>;
   total_amount?: number;
   totalAmount?: number;
   payment_type?: string;
@@ -42,6 +42,8 @@ interface Sale {
   cashReceived?: number;
   change_amount?: number;
   change?: number;
+  total_returned_amount?: number;
+  totalReturnedAmount?: number;
   finalized_at?: string;
   date?: string;
   served_by?: string;
@@ -93,10 +95,12 @@ const normalizedSale = computed(() => {
     items: normalizedItems,
     subtotal: props.sale.subtotal ?? props.sale.subtotal_amount ?? 0,
     taxAmount: props.sale.taxAmount ?? props.sale.tax_amount ?? 0,
-    totalAmount: props.sale.totalAmount ?? props.sale.total_amount ?? 0,
+    taxDetails: props.sale.taxDetails || (props.sale.taxAmount ? { 'Tax': props.sale.taxAmount } : (props.sale.tax_amount ? { 'Tax': props.sale.tax_amount } : {})),
+    totalAmount: Number(props.sale.totalAmount ?? props.sale.total_amount ?? 0),
     paymentType: props.sale.paymentType ?? props.sale.payment_type ?? 'cash',
-    cashReceived: props.sale.cashReceived ?? props.sale.cash_received ?? 0,
-    change: props.sale.change ?? props.sale.change_amount ?? 0,
+    cashReceived: Number(props.sale.cashReceived ?? props.sale.cash_received ?? 0),
+    change: Number(props.sale.change ?? props.sale.change_amount ?? 0),
+    totalReturnedAmount: Number(props.sale.totalReturnedAmount ?? props.sale.total_returned_amount ?? 0),
     date: props.sale.date ?? (props.sale.finalized_at ? new Date(props.sale.finalized_at).toLocaleString() : new Date().toLocaleString()),
     servedBy,
   };
@@ -113,6 +117,14 @@ const printReceipt = () => {
 
   const printWindow = window.open('', '_blank');
   if (!printWindow) return;
+
+  // Format Tax Rows
+  const taxRows = Object.entries(normalizedSale.value.taxDetails || {}).map(([name, amount]) => `
+     <div class="row">
+        <span class="tax-name">${name}:</span>
+        <span>${formatCurrency(amount as number)}</span>
+    </div>
+  `).join('');
 
   const receiptHtml = `
     <!DOCTYPE html>
@@ -151,6 +163,10 @@ const printReceipt = () => {
           justify-content: space-between;
           margin: 5px 0;
         }
+        .tax-name {
+            font-size: 0.9em;
+            color: #444;
+        }
         .totals {
           border-top: 2px solid #000;
           margin-top: 10px;
@@ -188,6 +204,18 @@ const printReceipt = () => {
               <span>${item.quantity} x ${formatCurrency(item.price)}</span>
               <span>${formatCurrency(item.total)}</span>
             </div>
+            ${item.return_quantity > 0 ? `
+                <div class="row" style="color: #ef4444; font-size: 0.85em; margin-top: -2px;">
+                    <span>Returned:</span>
+                    <span>-${item.return_quantity}</span>
+                </div>
+            ` : ''}
+            ${item.return_quantity > 0 ? `
+                <div class="row" style="color: #ef4444; font-size: 0.85em; margin-top: -2px;">
+                    <span>Returned:</span>
+                    <span>-${item.return_quantity}</span>
+                </div>
+            ` : ''}
             ${item.dosage_instructions?.full_frequency ? `
               <div class="dosage">
                 <strong>Dosage:</strong> ${item.dosage_instructions.measurement} ${item.dosage_instructions.full_frequency}
@@ -204,14 +232,26 @@ const printReceipt = () => {
           <span>Subtotal:</span>
           <span>${formatCurrency(normalizedSale.value.subtotal)}</span>
         </div>
-        <div class="row">
-          <span>Tax (8%):</span>
-          <span>${formatCurrency(normalizedSale.value.taxAmount)}</span>
-        </div>
+
+        ${taxRows}
+
         <div class="row total">
           <span>TOTAL:</span>
-          <span>${formatCurrency(normalizedSale.value.totalAmount)}</span>
+          <span>
+             ${normalizedSale.value.totalReturnedAmount > 0
+      ? `<s style="font-size: 0.8em; color: #999; margin-right: 5px;">${formatCurrency(normalizedSale.value.totalAmount + normalizedSale.value.totalReturnedAmount)}</s>`
+      : ''}
+             ${formatCurrency(normalizedSale.value.totalAmount)}
+          </span>
         </div>
+
+        ${normalizedSale.value.totalReturnedAmount > 0 ? `
+            <div class="row" style="color: #666; font-size: 0.9em;">
+                <span>Returned Amount:</span>
+                <span>-${formatCurrency(normalizedSale.value.totalReturnedAmount)}</span>
+            </div>
+        ` : ''}
+
         ${normalizedSale.value.paymentType === 'cash' && normalizedSale.value.cashReceived ? `
           <div class="row">
             <span>Cash Received:</span>
@@ -219,7 +259,12 @@ const printReceipt = () => {
           </div>
           <div class="row">
             <span>Change:</span>
-            <span>${formatCurrency(normalizedSale.value.change)}</span>
+            <span>
+                ${normalizedSale.value.totalReturnedAmount > 0
+        ? `<s style="font-size: 0.8em; color: #999; margin-right: 5px;">${formatCurrency(Math.max(0, normalizedSale.value.cashReceived - (normalizedSale.value.totalAmount + normalizedSale.value.totalReturnedAmount)))}</s>`
+        : ''}
+                ${formatCurrency(Math.max(0, normalizedSale.value.cashReceived - normalizedSale.value.totalAmount))}
+            </span>
           </div>
         ` : ''}
         <div class="row">
@@ -275,6 +320,9 @@ const printReceipt = () => {
               <span>{{ item.quantity }} x {{ formatCurrency(item.price) }}</span>
               <span class="font-semibold">{{ formatCurrency(item.total) }}</span>
             </div>
+            <div v-if="(item.return_quantity || 0) > 0" class="text-xs text-red-600 font-medium mt-0.5">
+              Returned: -{{ item.return_quantity }}
+            </div>
             <div v-if="item.dosage_instructions?.full_frequency"
               class="text-xs text-muted-foreground mt-2 p-2 bg-background rounded">
               <strong>Dosage Instructions:</strong><br />
@@ -295,14 +343,30 @@ const printReceipt = () => {
             <span>Subtotal:</span>
             <span>{{ formatCurrency(normalizedSale?.subtotal ?? 0) }}</span>
           </div>
-          <div class="flex justify-between text-sm">
-            <span>Tax (8%):</span>
-            <span>{{ formatCurrency(normalizedSale?.taxAmount ?? 0) }}</span>
-          </div>
+          <template v-for="(amount, name) in normalizedSale?.taxDetails" :key="name">
+            <div class="flex justify-between text-sm">
+              <span class="text-muted-foreground">{{ name }}</span>
+              <span>{{ formatCurrency(amount) }}</span>
+            </div>
+          </template>
+
           <div class="flex justify-between text-lg font-bold pt-2 border-t">
             <span>TOTAL:</span>
-            <span>{{ formatCurrency(normalizedSale?.totalAmount ?? 0) }}</span>
+            <span>
+              <s v-if="(normalizedSale?.totalReturnedAmount || 0) > 0"
+                class="text-sm text-muted-foreground mr-2 font-normal">
+                {{ formatCurrency((normalizedSale?.totalAmount ?? 0) + (normalizedSale?.totalReturnedAmount ?? 0)) }}
+              </s>
+              {{ formatCurrency(normalizedSale?.totalAmount ?? 0) }}
+            </span>
           </div>
+
+          <div v-if="(normalizedSale?.totalReturnedAmount || 0) > 0"
+            class="flex justify-between text-sm text-destructive font-medium">
+            <span>Returned Amount:</span>
+            <span>-{{ formatCurrency(normalizedSale?.totalReturnedAmount) }}</span>
+          </div>
+
           <div v-if="normalizedSale?.paymentType === 'cash' && normalizedSale?.cashReceived"
             class="pt-2 border-t space-y-1">
             <div class="flex justify-between">
@@ -311,7 +375,16 @@ const printReceipt = () => {
             </div>
             <div class="flex justify-between text-green-600 font-bold">
               <span>Change:</span>
-              <span>{{ formatCurrency(normalizedSale?.change ?? 0) }}</span>
+              <span>
+                <s v-if="(normalizedSale?.totalReturnedAmount || 0) > 0"
+                  class="text-sm text-muted-foreground mr-2 font-normal">
+                  {{ formatCurrency(Math.max(0, (normalizedSale?.cashReceived ?? 0) - ((normalizedSale?.totalAmount ??
+                    0) +
+                    (normalizedSale?.totalReturnedAmount ?? 0)))) }}
+                </s>
+                {{ formatCurrency(Math.max(0, (normalizedSale?.cashReceived ?? 0) - (normalizedSale?.totalAmount ?? 0)))
+                }}
+              </span>
             </div>
           </div>
           <div class="flex justify-between text-sm pt-2">

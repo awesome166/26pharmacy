@@ -44,12 +44,12 @@ class HandleInertiaRequests extends Middleware
             ...parent::share($request),
             'name' => config('app.name'),
             // 'quote' => ['message' => trim($message), 'author' => trim($author)],
-                'auth' => [
+            'auth' => [
                 'user' => $request->user(),
                 'accounts' => $request->user()?->accounts,
                 'current_account_id' => app(\AbacPermissions\Tenancy\TenantContext::class)->getAccountId(),
-                'permissions' => AbacPermissions::getPermissions(auth()->user()),
-                'settings' => SystemSetting::getMergedSettings(),
+                'permissions' => $request->user()?->getAllPermissions() ?? [],
+                'settings' => fn () => SystemSetting::getMergedSettings(),
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
         ];

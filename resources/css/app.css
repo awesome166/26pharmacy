@@ -151,3 +151,27 @@
         break-inside: avoid;
     }
 }
+
+thead th:first-child {
+    border-radius: 6px 0 0 6px;
+    padding: 10px 12px;
+}
+
+thead th:last-child {
+    border-radius: 0 6px 6px 0;
+}
+
+th {
+    @apply font-bold;
+    /* font-size: 12px; */
+    @apply bg-slate-900;
+    @apply text-white;
+    padding: 4px 8px;
+
+}
+
+td {
+    /* font-size: 12px; */
+    padding: 4px 8px;
+    border-bottom: 1px solid #e5e7eb;
+}

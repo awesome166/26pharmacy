@@ -241,7 +241,13 @@ const hasActiveFilters = () => {
                                     class="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted">
                                     <td class="p-4 align-middle font-mono text-xs">{{ sale.id.substring(0, 8) }}...</td>
                                     <td class="p-4 align-middle">{{ formatDate(sale.finalized_at) }}</td>
-                                    <td class="p-4 align-middle capitalize">{{ sale.payment_type || 'N/A' }}</td>
+                                    <td class="p-4 align-middle capitalize">
+                                        {{ sale.payment_type || 'N/A' }}
+                                        <span v-if="sale.returns_exists"
+                                            class="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
+                                            Returned
+                                        </span>
+                                    </td>
                                     <td class="p-4 align-middle text-right font-semibold">{{
                                         formatCurrency(sale.total_amount) }}</td>
                                     <td class="p-4 align-middle text-right">

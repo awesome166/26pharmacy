@@ -26,6 +26,9 @@ class SaleItem extends Model
         'requires_prescription',
         'prescription_metadata',
         'dosage_instructions',
+        'is_returned',
+        'return_quantity',
+        'return_date',
     ];
 
     protected $casts = [
@@ -35,6 +38,8 @@ class SaleItem extends Model
         'requires_prescription' => 'boolean',
         'prescription_metadata' => 'array',
         'dosage_instructions' => 'array',
+        'is_returned' => 'boolean',
+        'return_date' => 'datetime',
     ];
 
     public function sale(): BelongsTo
