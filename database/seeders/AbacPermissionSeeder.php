@@ -231,140 +231,176 @@ class AbacPermissionSeeder extends Seeder
 
         // 3. Create Permissions (E-commerce Pharmacy Specific)
         $permissions = [
-            // Product Management
+            // Dashboard
             [
-                'name' => 'products.manage',
-                'type' => 'crud',
-                'description' => 'Manage all pharmaceutical products',
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-            [
-                'name' => 'products.view',
+                'name' => 'dashboard.view',
                 'type' => 'on-off',
-                'description' => 'View product catalog',
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-            [
-                'name' => 'inventory.manage',
-                'type' => 'crud',
-                'description' => 'Manage inventory levels and stock',
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-            [
-                'name' => 'prescription.verify',
-                'type' => 'on-off',
-                'description' => 'Verify and validate prescriptions',
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-            [
-                'name' => 'prescription.dispense',
-                'type' => 'on-off',
-                'description' => 'Dispense prescription medications',
+                'description' => 'View main dashboard and aggregate statistics',
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
 
-            // Order Management
+            // Accounts (Pharmacies)
             [
-                'name' => 'orders.process',
+                'name' => 'accounts.manage',
                 'type' => 'crud',
-                'description' => 'Process customer orders',
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-            [
-                'name' => 'orders.delivery',
-                'type' => 'on-off',
-                'description' => 'Manage order delivery and shipping',
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-            [
-                'name' => 'orders.pickup',
-                'type' => 'on-off',
-                'description' => 'Handle in-store pickups',
+                'description' => 'Manage pharmacy branches',
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
 
-            // Customer Management
-            [
-                'name' => 'customers.manage',
-                'type' => 'crud',
-                'description' => 'Manage customer profiles and data',
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-            [
-                'name' => 'medical_records.view',
-                'type' => 'on-off',
-                'description' => 'View customer medical records (HIPAA compliant)',
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-
-            // Pharmacy Operations
-            [
-                'name' => 'pharmacy.settings',
-                'type' => 'crud',
-                'description' => 'Manage pharmacy settings and configuration',
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-            [
-                'name' => 'insurance.billing',
-                'type' => 'crud',
-                'description' => 'Process insurance claims and billing',
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-            [
-                'name' => 'reports.generate',
-                'type' => 'on-off',
-                'description' => 'Generate pharmacy reports and analytics',
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-            [
-                'name' => 'compliance.manage',
-                'type' => 'on-off',
-                'description' => 'Manage regulatory compliance',
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-
-            // User & Role Management
+            // Users & Roles
             [
                 'name' => 'users.manage',
                 'type' => 'crud',
-                'description' => 'Manage pharmacy staff users',
+                'description' => 'Manage staff members',
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
             [
                 'name' => 'roles.manage',
                 'type' => 'crud',
-                'description' => 'Manage roles and permissions',
+                'description' => 'Manage roles and permissions limits',
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
 
-            // Financial
+            // Drugs & Products
             [
-                'name' => 'financial.view',
-                'type' => 'on-off',
-                'description' => 'View financial reports',
+                'name' => 'drugs.manage',
+                'type' => 'crud',
+                'description' => 'Manage drug catalog',
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
             [
-                'name' => 'financial.manage',
+                'name' => 'batches.manage',
                 'type' => 'crud',
-                'description' => 'Manage all financial operations',
+                'description' => 'Manage product batches',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+
+            // Inventory
+            [
+                'name' => 'inventory.manage',
+                'type' => 'crud',
+                'description' => 'Manage inventory levels',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'name' => 'inventory.adjust',
+                'type' => 'on-off',
+                'description' => 'Adjust stock levels manually',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'name' => 'inventory.transfer',
+                'type' => 'on-off',
+                'description' => 'Transfer stock between branches',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'name' => 'inventory.expired',
+                'type' => 'on-off',
+                'description' => 'Manage and process expired inventory',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+
+            // Point of Sale (Sales)
+            [
+                'name' => 'pos.access',
+                'type' => 'on-off',
+                'description' => 'Access the main Store/POS interface',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'name' => 'sales.process',
+                'type' => 'crud',
+                'description' => 'Process and view sales',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'name' => 'sales.reverse',
+                'type' => 'on-off',
+                'description' => 'Reverse or void a finalized sale',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+
+            // Returns
+            [
+                'name' => 'returns.manage',
+                'type' => 'crud',
+                'description' => 'Manage sales returns',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'name' => 'returns.restock',
+                'type' => 'on-off',
+                'description' => 'Restock returned items to inventory',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+
+            // Reports & Audit
+            [
+                'name' => 'reports.view',
+                'type' => 'on-off',
+                'description' => 'View reporting module',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'name' => 'reports.export',
+                'type' => 'on-off',
+                'description' => 'Export ledgers and reports',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'name' => 'audit_trail.view',
+                'type' => 'on-off',
+                'description' => 'View the system audit trail',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+
+            // Settings & Configuration
+            [
+                'name' => 'settings.manage',
+                'type' => 'crud',
+                'description' => 'Manage system configurations',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'name' => 'taxes.manage',
+                'type' => 'crud',
+                'description' => 'Manage tax rates',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'name' => 'devices.manage',
+                'type' => 'crud',
+                'description' => 'Manage registered branch devices',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+
+            // Sync Operations
+            [
+                'name' => 'sync.manage',
+                'type' => 'on-off',
+                'description' => 'Manually trigger data syncs',
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
@@ -378,146 +414,120 @@ class AbacPermissionSeeder extends Seeder
             $permissionIds[] = $id;
         }
 
-        // 4. Assign Permissions to Roles via assigned_permissions table
-        $assignedPermissions = [
-            // Super Admin (system-wide role) gets all permissions
-            [
+        // 4a. Initialize Account Caps (Two-Tier Delegation)
+        // Without this, no user (including Tenant Zeus) can delegate permissions.
+        $accountAssignedPermissions = [];
+        foreach ($accountIds as $accountId) {
+            foreach ($permissionIds as $permId) {
+                $accountAssignedPermissions[] = [
+                    'id' => (string) Str::ulid(),
+                    'account_id' => $accountId,      // the tenant context
+                    'permission_id' => $permId,
+                    'assignee_id' => $accountId,     // assigned heavily to the account itself
+                    'assignee_type' => 'account',
+                    'grantable' => true,             // THIS MAKES IT THE ACCOUNT CAP
+                    'access' => null,                // null = full access allowed
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ];
+            }
+        }
+
+        foreach ($accountAssignedPermissions as $assignment) {
+            DB::table($tables['assigned_permissions'])->insert($assignment);
+        }
+
+        // 4b. Assign Permissions to Roles via assigned_permissions table
+        $assignedPermissions = [];
+
+        // Super Admin gets all permissions (null access = full)
+        foreach ($permissionIds as $permId) {
+            $assignedPermissions[] = [
                 'account_id' => null, // System-wide
-                'permission_id' => $permissionIds[0], // products.manage
+                'permission_id' => $permId,
                 'assignee_id' => $roleIds[0], // Super Admin role
                 'assignee_type' => 'role',
-                'access' => json_encode(['create', 'read', 'update', 'delete']),
+                'access' => null,
                 'created_at' => now(),
                 'updated_at' => now(),
-            ],
-            [
-                'account_id' => null,
-                'permission_id' => $permissionIds[1], // products.view
-                'assignee_id' => $roleIds[0],
-                'assignee_type' => 'role',
-                'access' => json_encode(['on']),
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-            [
-                'account_id' => null,
-                'permission_id' => $permissionIds[2], // inventory.manage
-                'assignee_id' => $roleIds[0],
-                'assignee_type' => 'role',
-                'access' => json_encode(['create', 'read', 'update', 'delete']),
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
+            ];
+        }
 
-            // Pharmacy Manager (MediCare) - account-specific permissions
-            [
-                'account_id' => $accountIds[0], // MediCare Pharmacy
-                'permission_id' => $permissionIds[0], // products.manage
-                'assignee_id' => $roleIds[2], // MediCare Pharmacy Manager role
-                'assignee_type' => 'role',
-                'access' => json_encode(['create', 'read', 'update']),
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-            [
-                'account_id' => $accountIds[0],
-                'permission_id' => $permissionIds[3], // prescription.verify
-                'assignee_id' => $roleIds[2],
-                'assignee_type' => 'role',
-                'access' => json_encode(['on']),
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-            [
-                'account_id' => $accountIds[0],
-                'permission_id' => $permissionIds[4], // prescription.dispense
-                'assignee_id' => $roleIds[2],
-                'assignee_type' => 'role',
-                'access' => json_encode(['on']),
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
+        // Helper Map to quickly find permission IDs by name
+        $permMap = [];
+        foreach ($permissions as $index => $perm) {
+             $permMap[$perm['name']] = $permissionIds[$index];
+        }
 
-            // Licensed Pharmacist (MediCare)
-            [
-                'account_id' => $accountIds[0],
-                'permission_id' => $permissionIds[1], // products.view
-                'assignee_id' => $roleIds[3], // MediCare Licensed Pharmacist
-                'assignee_type' => 'role',
-                'access' => json_encode(['on']),
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-            [
-                'account_id' => $accountIds[0],
-                'permission_id' => $permissionIds[3], // prescription.verify
-                'assignee_id' => $roleIds[3],
-                'assignee_type' => 'role',
-                'access' => json_encode(['on']),
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-            [
-                'account_id' => $accountIds[0],
-                'permission_id' => $permissionIds[4], // prescription.dispense
-                'assignee_id' => $roleIds[3],
-                'assignee_type' => 'role',
-                'access' => json_encode(['on']),
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
+        // Add some explicit role assignments for testing
 
-            // Customer Service (MediCare)
-            [
-                'account_id' => $accountIds[0],
-                'permission_id' => $permissionIds[1], // products.view
-                'assignee_id' => $roleIds[5], // MediCare Customer Service
-                'assignee_type' => 'role',
-                'access' => json_encode(['on']),
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-            [
-                'account_id' => $accountIds[0],
-                'permission_id' => $permissionIds[5], // orders.process
-                'assignee_id' => $roleIds[5],
-                'assignee_type' => 'role',
-                'access' => json_encode(['create', 'read', 'update']),
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
+        // Pharmacy Manager (MediCare)
+        $managerPerms = [
+            'dashboard.view' => ['on'],
+            'users.manage' => ['create', 'read', 'update'],
+            'inventory.manage' => ['create', 'read', 'update', 'delete'],
+            'pos.access' => ['on'],
+            'sales.process' => ['create', 'read', 'update', 'delete'],
+        ];
 
-            // Direct user permission assignment (pharmacist can view medical records at MediCare)
-            [
+        foreach ($managerPerms as $name => $access) {
+            if (isset($permMap[$name])) {
+                $assignedPermissions[] = [
+                    'account_id' => $accountIds[0], // MediCare Pharmacy
+                    'permission_id' => $permMap[$name],
+                    'assignee_id' => $roleIds[2], // MediCare Pharmacy Manager role
+                    'assignee_type' => 'role',
+                    'access' => json_encode($access),
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ];
+            }
+        }
+
+        // Licensed Pharmacist (MediCare)
+        $pharmacistPerms = [
+            'dashboard.view' => ['on'],
+            'inventory.manage' => ['read'],
+            'pos.access' => ['on'],
+            'sales.process' => ['create', 'read'],
+        ];
+
+        foreach ($pharmacistPerms as $name => $access) {
+            if (isset($permMap[$name])) {
+                $assignedPermissions[] = [
+                    'account_id' => $accountIds[0], // MediCare Pharmacy
+                    'permission_id' => $permMap[$name],
+                    'assignee_id' => $roleIds[3], // MediCare Licensed Pharmacist
+                    'assignee_type' => 'role',
+                    'access' => json_encode($access),
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ];
+                // And for QuickRx Pharmacist Role
+                $assignedPermissions[] = [
+                    'account_id' => $accountIds[1], // QuickRx Pharmacy
+                    'permission_id' => $permMap[$name],
+                    'assignee_id' => $roleIds[7], // QuickRx Pharmacist
+                    'assignee_type' => 'role',
+                    'access' => json_encode($access),
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ];
+            }
+        }
+
+        // Direct user permission assignment (pharmacist can view audit trail directly)
+        if (isset($permMap['audit_trail.view'])) {
+            $assignedPermissions[] = [
                 'account_id' => $accountIds[0],
-                'permission_id' => $permissionIds[9], // medical_records.view
+                'permission_id' => $permMap['audit_trail.view'],
                 'assignee_id' => $pharmacistId,
                 'assignee_type' => 'user',
                 'access' => json_encode(['on']),
                 'created_at' => now(),
                 'updated_at' => now(),
-            ],
-
-            // QuickRx Pharmacist
-            [
-                'account_id' => $accountIds[1], // QuickRx Pharmacy
-                'permission_id' => $permissionIds[1], // products.view
-                'assignee_id' => $roleIds[7], // QuickRx Pharmacist
-                'assignee_type' => 'role',
-                'access' => json_encode(['on']),
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-            [
-                'account_id' => $accountIds[1],
-                'permission_id' => $permissionIds[3], // prescription.verify
-                'assignee_id' => $roleIds[7],
-                'assignee_type' => 'role',
-                'access' => json_encode(['on']),
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-        ];
+            ];
+        }
 
         foreach ($assignedPermissions as $assignment) {
             $assignment['id'] = (string) Str::ulid();
@@ -597,10 +607,10 @@ class AbacPermissionSeeder extends Seeder
                 'event' => 'permission.granted',
                 'causer_id' => $systemAdminId,
                 'causer_type' => 'App\Models\User',
-                'subject_id' => $permissionIds[9],
+                'subject_id' => $permMap['reports.view'] ?? $permissionIds[0],
                 'subject_type' => 'App\Models\Permission',
                 'properties' => json_encode([
-                    'permission' => 'medical_records.view',
+                    'permission' => 'reports.view',
                     'user' => 'John Pharmacist',
                     'scope' => 'MediCare Pharmacy'
                 ]),
@@ -632,7 +642,7 @@ class AbacPermissionSeeder extends Seeder
         $this->command->info('Created:');
         $this->command->info('- 3 Pharmacy accounts');
         $this->command->info('- 8 Roles (including system roles)');
-        $this->command->info('- 19 Permissions');
+        $this->command->info('- ' . count($permissions) . ' Permissions');
         $this->command->info('- ' . count($assignedPermissions) . ' Assigned permissions (role and user assignments)');
         $this->command->info('- User-account memberships');
         $this->command->info('- User-role assignments');

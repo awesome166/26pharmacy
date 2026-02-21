@@ -4,20 +4,20 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "110d51efc787d006cac3854bc73505d7",
+    "content-hash": "d174f967b25cd0d8b070206438122d02",
     "packages": [
         {
             "name": "abacpermissions/abacpermissions",
-            "version": "1.1.14",
+            "version": "1.2.8",
             "source": {
                 "type": "git",
                 "url": "https://github.com/awesome166/laravel_abac.git",
-                "reference": "21ad48a675a509937d8ac80b7b17a8b7ae5723c5"
+                "reference": "8912739a815c0cb5b069678ebe201cbe702771d9"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/awesome166/laravel_abac/zipball/21ad48a675a509937d8ac80b7b17a8b7ae5723c5",
-                "reference": "21ad48a675a509937d8ac80b7b17a8b7ae5723c5",
+                "url": "https://api.github.com/repos/awesome166/laravel_abac/zipball/8912739a815c0cb5b069678ebe201cbe702771d9",
+                "reference": "8912739a815c0cb5b069678ebe201cbe702771d9",
                 "shasum": ""
             },
             "require": {
@@ -91,10 +91,10 @@
                 "saas"
             ],
             "support": {
-                "source": "https://github.com/awesome166/laravel_abac/tree/v1.1.14",
+                "source": "https://github.com/awesome166/laravel_abac/tree/v1.2.8",
                 "issues": "https://github.com/awesome166/laravel_abac/issues"
             },
-            "time": "2026-02-18T23:12:21+00:00"
+            "time": "2026-02-20T17:14:05+00:00"
         },
         {
             "name": "bacon/bacon-qr-code",

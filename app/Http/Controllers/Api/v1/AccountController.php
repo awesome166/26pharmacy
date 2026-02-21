@@ -240,6 +240,7 @@ class AccountController extends Controller
                 'assignee_id'   => $account->id,
                 'permission_id' => $permId,
                 'account_id'    => $account->id,   // context = the account itself
+                'grantable'     => true,           // Ensure branch manager can delegate
                 'access'        => $access,
                 'created_at'    => $now,
                 'updated_at'    => $now,
