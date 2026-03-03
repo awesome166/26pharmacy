@@ -24,7 +24,21 @@ class AppServiceProvider extends ServiceProvider
         \Illuminate\Support\Facades\Vite::prefetch(concurrency: 3);
 
         \Illuminate\Support\Facades\Gate::before(function ($user, $ability) {
-            return $user->hasPermissionTo($ability) ? true : null;
+            $permissions = $user->getAllPermissions();
+
+            // 1. Check exact match
+            if (in_array($ability, $permissions)) {
+                return true;
+            }
+
+            // 2. Check wildcard matches (if checking "users.manage", it passes if "users.manage:read" exists)
+            foreach ($permissions as $perm) {
+                if (str_starts_with($perm, $ability . ':')) {
+                    return true;
+                }
+            }
+
+            return null;
         });
     }
 }

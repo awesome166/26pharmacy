@@ -51,29 +51,29 @@ Route::prefix('v1')->group(function () {
         Route::delete('devices/{device}', [DeviceController::class, 'revoke']);
 
         // POS Operations
-        Route::apiResource('sales', SaleController::class)->only(['index', 'show', 'store']);
-        Route::patch('sale-items/{saleItem}/dosage', [SaleItemController::class, 'updateDosageInstructions']);
-        Route::post('sales/finalize', [SaleController::class, 'finalizeSale']);
-        Route::post('sales/reverse', [SaleController::class, 'reverseSale']);
+        Route::apiResource('sales', SaleController::class)->only(['index', 'show', 'store'])->middleware('can:sales.process');
+        Route::patch('sale-items/{saleItem}/dosage', [SaleItemController::class, 'updateDosageInstructions'])->middleware('can:sales.process');
+        Route::post('sales/finalize', [SaleController::class, 'finalizeSale'])->middleware('can:sales.process');
+        Route::post('sales/reverse', [SaleController::class, 'reverseSale'])->middleware('can:sales.reverse');
 
         Route::prefix('inventory')->group(function () {
-            Route::get('/search', [InventoryController::class, 'search']);
-            Route::get('/branch/{branch}', [InventoryController::class, 'index']);
-            Route::post('/adjust', [InventoryController::class, 'adjustStock']);
-            Route::post('/transfer', [TransferController::class, 'initiateTransfer']);
-            Route::get('/expired', [InventoryController::class, 'expired']);
-            Route::post('/expired/process', [InventoryController::class, 'processExpired']);
+            Route::get('/search', [InventoryController::class, 'search'])->middleware('can:inventory.manage');
+            Route::get('/branch/{branch}', [InventoryController::class, 'index'])->middleware('can:inventory.manage');
+            Route::post('/adjust', [InventoryController::class, 'adjustStock'])->middleware('can:inventory.adjust');
+            Route::post('/transfer', [TransferController::class, 'initiateTransfer'])->middleware('can:inventory.transfer');
+            Route::get('/expired', [InventoryController::class, 'expired'])->middleware('can:inventory.expired');
+            Route::post('/expired/process', [InventoryController::class, 'processExpired'])->middleware('can:inventory.expired');
         });
 
         // Batches
-        Route::get('batches', [\App\Http\Controllers\Api\v1\BatchController::class, 'index']);
-        Route::post('batches', [\App\Http\Controllers\Api\v1\BatchController::class, 'store']); // Create Batch
+        Route::get('batches', [\App\Http\Controllers\Api\v1\BatchController::class, 'index'])->middleware('can:batches.manage');
+        Route::post('batches', [\App\Http\Controllers\Api\v1\BatchController::class, 'store'])->middleware('can:batches.manage'); // Create Batch
 
         // Settings
-        Route::get('settings', [\App\Http\Controllers\Api\v1\SystemSettingController::class, 'index']);
-        Route::post('settings', [\App\Http\Controllers\Api\v1\SystemSettingController::class, 'update']);
+        Route::get('settings', [\App\Http\Controllers\Api\v1\SystemSettingController::class, 'index'])->middleware('can:settings.manage');
+        Route::post('settings', [\App\Http\Controllers\Api\v1\SystemSettingController::class, 'update'])->middleware('can:settings.manage');
 
-        Route::post('returns', [\App\Http\Controllers\Api\v1\ReturnController::class, 'store']);
+        Route::post('returns', [\App\Http\Controllers\Api\v1\ReturnController::class, 'store'])->middleware('can:returns.manage');
 
         // Sync & Offline Support
         Route::prefix('sync')->group(function () {
@@ -90,10 +90,10 @@ Route::prefix('v1')->group(function () {
 
         // Reporting & Compliance
         Route::prefix('reports')->group(function () {
-            Route::get('/daily-sales', [ReportController::class, 'dailySales']);
-            Route::get('/export-ledger', [ReportController::class, 'exportLedger']);
+            Route::get('/daily-sales', [ReportController::class, 'dailySales'])->middleware('can:reports.view');
+            Route::get('/export-ledger', [ReportController::class, 'exportLedger'])->middleware('can:reports.export');
         });
 
-        Route::get('/audit-trail', [AuditController::class, 'index']);
+        Route::get('/audit-trail', [AuditController::class, 'index'])->middleware('can:audit_trail.view');
     });
 });

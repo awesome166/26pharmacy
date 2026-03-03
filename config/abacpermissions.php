@@ -24,7 +24,7 @@ return [
         'accounts' => 'accounts',
         'roles' => 'roles',
         'permissions' => 'permissions',
-        // 'permission_role' => 'permission_role',
+        'permission_role' => 'permission_role',
         // 'permission_user' => 'permission_user',
         'account_user' => 'account_user', // Pivot table
         'assigned_permissions' => 'assigned_permissions',

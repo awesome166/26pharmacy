@@ -6,6 +6,7 @@ import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 import type { DefineComponent } from 'vue';
 import { createApp, h } from 'vue';
 import { initializeTheme } from './composables/useAppearance';
+import { usePermissions } from './composables/usePermissions';
 import { configureEcho } from '@laravel/echo-vue';
 
 configureEcho({
@@ -24,9 +25,13 @@ createInertiaApp({
             import.meta.glob<DefineComponent>('./pages/**/*.vue'),
         ),
     setup({ el, App, props, plugin }) {
-        createApp({ render: () => h(App, props) })
-            .use(plugin)
-            .mount(el);
+        const app = createApp({ render: () => h(App, props) });
+        app.use(plugin);
+
+        const { can } = usePermissions();
+        app.config.globalProperties.$can = can;
+
+        app.mount(el);
     },
     progress: {
         color: '#e600ffff',

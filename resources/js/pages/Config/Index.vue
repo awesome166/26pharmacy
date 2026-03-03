@@ -276,7 +276,7 @@ const isPlatformAdmin = computed(() => {
           </Card>
 
           <div class="flex justify-end pt-4 pb-12">
-            <Button @click="saveconfig" :disabled="saving" size="lg">
+            <Button v-if="$can('settings.manage')" @click="saveconfig" :disabled="saving" size="lg">
               <span v-if="saving">Saving...</span>
               <span v-else>Save Configuration</span>
             </Button>

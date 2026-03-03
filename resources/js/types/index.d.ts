@@ -19,6 +19,7 @@ export interface NavItem {
     href: NonNullable<InertiaLinkProps['href']>;
     icon?: LucideIcon;
     isActive?: boolean;
+    show?: boolean;
     items?: NavItem[];
 }
 
@@ -40,8 +41,14 @@ export interface User {
     created_at: string;
     updated_at: string;
     roles?: { id: number; name: string; zeus_level?: string }[];
-    permissions?: { id: number; name: string }[];
+    permissions?: string[];
     accounts?: { id: number; name: string; plan: string }[];
 }
 
 export type BreadcrumbItemType = BreadcrumbItem;
+
+declare module 'vue' {
+    interface ComponentCustomProperties {
+        $can: (permission: string) => boolean;
+    }
+}

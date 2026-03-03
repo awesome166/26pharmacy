@@ -11,7 +11,7 @@
                             <CardTitle>Users Management</CardTitle>
                             <CardDescription>Manage application users, roles, and access status.</CardDescription>
                         </div>
-                        <Button @click="openModal()">
+                        <Button v-if="$can('users.manage.create')" @click="openModal()">
                             <i class="fas fa-plus mr-2"></i> Create User
                         </Button>
                     </CardHeader>
@@ -64,9 +64,9 @@
                                             </Badge>
                                         </td>
                                         <td class="p-4 align-middle text-right">
-                                            <Button variant="ghost" size="sm" class="mr-2"
+                                            <Button v-if="$can('users.manage.update')" variant="ghost" size="sm" class="mr-2"
                                                 @click="openModal(user)">Edit</Button>
-                                            <Button variant="ghost" size="sm"
+                                            <Button v-if="$can('users.manage.update')" variant="ghost" size="sm"
                                                 :class="user.is_active ? 'text-destructive hover:text-destructive hover:bg-destructive/10' : 'text-green-600 hover:text-green-600 hover:bg-green-50'"
                                                 @click="toggleStatus(user)">
                                                 {{ user.is_active ? 'Suspend' : 'Activate' }}

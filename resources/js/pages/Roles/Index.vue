@@ -11,7 +11,7 @@
                             <CardTitle>Roles Management</CardTitle>
                             <CardDescription>Manage user roles and their associated permissions.</CardDescription>
                         </div>
-                        <Button @click="openModal()">
+                        <Button v-if="$can('roles.manage.create')" @click="openModal()">
                             <i class="fas fa-plus mr-2"></i> Create Role
                         </Button>
                     </CardHeader>
@@ -50,9 +50,9 @@
                                             </div>
                                         </td> -->
                                         <td class="p-4 align-middle text-right">
-                                            <Button variant="ghost" size="sm" class="mr-2"
+                                            <Button v-if="$can('roles.manage.update')" variant="ghost" size="sm" class="mr-2"
                                                 @click="openModal(role)">Edit</Button>
-                                            <Button variant="ghost" size="sm"
+                                            <Button v-if="$can('roles.manage.delete')" variant="ghost" size="sm"
                                                 class="text-destructive hover:text-destructive"
                                                 @click="deleteRole(role.id)">Delete</Button>
                                         </td>

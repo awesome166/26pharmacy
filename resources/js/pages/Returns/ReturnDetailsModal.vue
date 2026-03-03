@@ -148,7 +148,7 @@ const restockItem = (item: any) => {
                     </Badge>
                   </td>
                   <td class="p-4 align-middle text-right">
-                    <Button v-if="!item.is_restocked" size="sm" variant="outline" class="h-8 gap-1"
+                    <Button v-if="!item.is_restocked && $can('returns.restock')" size="sm" variant="outline" class="h-8 gap-1"
                       :disabled="isRestocking === item.id" @click="restockItem(item)">
                       <span v-if="isRestocking === item.id" class="loader mr-1"></span>
                       Restock

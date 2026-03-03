@@ -129,15 +129,15 @@ const openCreateBatch = () => {
                     <p class="text-muted-foreground mt-1">Track stock levels, monitor expiry, and manage batches.</p>
                 </div>
                 <div class="flex flex-wrap items-center gap-2">
-                    <Button variant="outline" @click="openCreateBatch">
+                    <Button v-if="$can('batches.manage.create')" variant="outline" @click="openCreateBatch">
                         <Plus class="h-4 w-4 mr-2" />
                         New Batch
                     </Button>
-                    <Button variant="destructive" @click="router.visit('/app/inventory/expired')">
+                    <Button v-if="$can('inventory.expired')" variant="destructive" @click="router.visit('/app/inventory/expired')">
                         <AlertCircle class="h-4 w-4 mr-2" />
                         Expired Stock
                     </Button>
-                    <Button v-if="batchMode" @click="openAddStock">
+                    <Button v-if="batchMode && $can('inventory.manage.create')" @click="openAddStock">
                         <Plus class="h-4 w-4 mr-2" />
                         Add Stock
                     </Button>
@@ -221,7 +221,7 @@ const openCreateBatch = () => {
                                         </div>
                                     </td>
                                     <td class="p-4 align-middle text-right">
-                                        <Button variant="outline" size="sm" @click="openAdjustModal(item)">
+                                        <Button v-if="$can('inventory.adjust')" variant="outline" size="sm" @click="openAdjustModal(item)">
                                             <Settings2 class="h-3 w-3 mr-1" />
                                             Adjust
                                         </Button>

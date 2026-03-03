@@ -748,7 +748,7 @@ const formatDate = (dateString: string | number | Date) => {
                         </svg>
                         Dosage
                       </Button>
-                      <Button size="sm" variant="outline"
+                      <Button v-if="$can('returns.manage.create')" size="sm" variant="outline"
                         class="flex-1 text-xs text-orange-600 hover:text-orange-700 hover:bg-orange-50 border-orange-200"
                         @click="openReturnModal(sale)">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 mr-1" viewBox="0 0 24 24" fill="none"
