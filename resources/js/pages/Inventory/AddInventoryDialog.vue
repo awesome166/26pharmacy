@@ -34,7 +34,8 @@ const form = useForm({
   drug_id: '',
   batch_id: '',
   selling_price: 0,
-  quantity_on_hand: 0
+  quantity_on_hand: 0,
+  location: ''
 });
 
 const openDialog = async (preSelectedBatch: any = null) => {
@@ -44,14 +45,14 @@ const openDialog = async (preSelectedBatch: any = null) => {
   if (preSelectedBatch) {
     if (preSelectedBatch.drug) {
       selectedDrug.value = preSelectedBatch.drug;
-      form.drug_id = preSelectedBatch.drug.drug_id || preSelectedBatch.drug_id;
+      form.drug_id = preSelectedBatch.drug.id || preSelectedBatch.drug_id;
     }
 
     // We need to fetch batches for the selected drug to populate the dropdown
     // and then select the specific batch
     if (form.drug_id) {
       await fetchBatches(form.drug_id);
-      form.batch_id = preSelectedBatch.id; // Assuming batch.id matches batch_id in select
+      form.batch_id = preSelectedBatch.id;
 
       // Pre-fill quantity if available/relevant
       if (preSelectedBatch.quantity) {
@@ -101,7 +102,8 @@ const fetchBatches = async (drugId: string) => {
   loadingBatches.value = true;
   try {
     const res = await axios.get(`/app/batches?drug_id=${drugId}&wantsJson=1`);
-    batches.value = res.data.data || res.data || [];
+    const payload = res.data?.data;
+    batches.value = payload?.data || payload || [];
   } catch (e) {
     console.error(e);
   } finally {
@@ -160,12 +162,16 @@ defineExpose({ openDialog });
                 <CommandList>
                   <CommandEmpty>{{ loadingDrugs ? 'Loading...' : 'No drug found.' }}</CommandEmpty>
                   <CommandGroup>
-                    <CommandItem v-for="drug in drugs" :key="drug.drug_id" :value="drug.drug_id" @select="() => {
+                    <CommandItem
+                      v-for="drug in drugs"
+                      :key="drug.id"
+                      :value="`${drug.name || ''} ${drug.generic_name || ''} ${drug.strength || ''}`.trim()"
+                      @select="() => {
                       selectedDrug = drug;
-                      form.drug_id = drug.drug_id;
+                      form.drug_id = drug.id;
                       openDrugSearch = false;
                     }">
-                      <Check :class="cn('mr-2 h-4 w-4', form.drug_id === drug.drug_id ? 'opacity-100' : 'opacity-0')" />
+                      <Check :class="cn('mr-2 h-4 w-4', form.drug_id === drug.id ? 'opacity-100' : 'opacity-0')" />
                       <div class="flex flex-col">
                         <span>{{ drug.name }}</span>
                         <span class="text-xs text-muted-foreground">{{ drug.strength }}</span>
@@ -185,8 +191,8 @@ defineExpose({ openDialog });
               <SelectValue :placeholder="loadingBatches ? 'Loading batches...' : 'Choose a batch'" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem v-for="batch in batches" :key="batch.batch_id" :value="batch.batch_id">
-                {{ batch.lot_number }} (Exp: {{ batch.expiry_date }})
+            <SelectItem v-for="batch in batches" :key="batch.id" :value="batch.id">
+                {{ batch.lot_number || batch.name || batch.id?.substring(0,8) }} (Exp: {{ batch.expiry_date }})
               </SelectItem>
             </SelectContent>
           </Select>
@@ -204,6 +210,10 @@ defineExpose({ openDialog });
             <Label>Initial Quantity</Label>
             <Input type="number" v-model="form.quantity_on_hand" />
           </div>
+        </div>
+        <div class="space-y-2" v-if="batchMode">
+          <Label>Shelf / Location</Label>
+          <Input v-model="form.location" placeholder="e.g. Shelf A-01" />
         </div>
         <div v-else class="p-3 bg-muted rounded-md text-sm">
           <p class="text-muted-foreground">

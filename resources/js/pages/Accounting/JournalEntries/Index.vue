@@ -15,11 +15,12 @@
           <div class="flex items-center gap-2">
             <div class="flex items-center gap-2 bg-background border px-3 py-1.5 rounded-md text-sm">
               <span class="text-muted-foreground">Show:</span>
-              <select v-model="filterStatus"
+              <select v-model="filterStatus" @change="refresh"
                 class="bg-transparent border-none outline-none focus:ring-0 cursor-pointer">
                 <option value="all">All Status</option>
                 <option value="draft">Draft</option>
                 <option value="posted">Posted</option>
+                <option value="reversed">Reversed</option>
                 <option value="voided">Voided</option>
               </select>
             </div>
@@ -129,9 +130,16 @@
                               </tbody>
                             </table>
                           </div>
-                          <div class="mt-2 text-xs text-muted-foreground text-right">
-                            Posted by: {{ entry.posted_by || 'System' }} at {{ entry.posted_at ?
-                              formatDate(entry.posted_at) : 'Not Posted' }}
+                          <div class="mt-3 rounded-md border bg-muted/30 px-3 py-2 flex items-center justify-between">
+                            <div class="text-xs">
+                              <div class="font-medium text-foreground">Posted By</div>
+                              <div class="text-muted-foreground">{{ getPostedByName(entry) }}</div>
+                              <div v-if="getPostedByEmail(entry)" class="text-muted-foreground/80">{{ getPostedByEmail(entry) }}</div>
+                            </div>
+                            <div class="text-xs text-right">
+                              <div class="font-medium text-foreground">Posted At</div>
+                              <div class="text-muted-foreground">{{ entry.posted_at ? formatDateTime(entry.posted_at) : 'Not Posted' }}</div>
+                            </div>
                           </div>
                         </div>
                       </td>
@@ -157,20 +165,21 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed } from 'vue';
 import { Head, router } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import JournalEntryCreateModal from './Components/JournalEntryCreateModal.vue';
-import axios from 'axios';
 
 const props = defineProps({
-  entries: Object
+  entries: Object,
+  accounts: Array,
+  filters: Object,
 });
 
-const accounts = ref([]);
+const accounts = ref(props.accounts || []);
 const breadcrumbs = [
   { title: 'Dashboard', href: '/accounting' },
   { title: 'Journal Entries', href: '/accounting/journal-entries' },
@@ -178,17 +187,7 @@ const breadcrumbs = [
 
 const expandedEntry = ref(null);
 const showCreateModal = ref(false);
-const filterStatus = ref('all');
-
-// Fetch accounts for the modal dropdown
-onMounted(async () => {
-  try {
-    const res = await axios.get('/accounting/accounts', { headers: { Accept: 'application/json' } });
-    accounts.value = res.data;
-  } catch (e) {
-    console.error("Failed to load accounts", e);
-  }
-});
+const filterStatus = ref(props.filters?.status || 'all');
 
 const filteredEntries = computed(() => {
   if (filterStatus.value === 'all') return props.entries.data;
@@ -210,25 +209,41 @@ const calculateTotal = (details) => {
 };
 
 const refresh = () => {
-  router.reload();
+  router.get('/accounting/journal-entries', { status: filterStatus.value }, { preserveState: true, preserveScroll: true });
 };
 
 const postEntry = (id) => {
   if (!confirm("Are you sure you want to post this entry? Balance updates are permanent.")) return;
-  router.post(route('accounting.journal-entries.post', id));
+  router.post(route('accounting.journal-entries.post', id), {}, { preserveScroll: true });
 };
 
 const voidEntry = (id) => {
   if (!confirm("Confirm VOID? This will reverse all balances.")) return;
-  router.post(route('accounting.journal-entries.void', id));
+  router.post(route('accounting.journal-entries.void', id), {}, { preserveScroll: true });
 };
 
 const formatDate = (date) => new Date(date).toLocaleDateString();
-const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
+const formatDateTime = (date) => new Date(date).toLocaleString();
+const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'GHS' }).format(val);
 
-const getStatusVariant = (status) => {
+const getPostedByName = (entry) => {
+  const posted = entry?.posted_by;
+  if (!posted) return 'System';
+  if (typeof posted === 'string') return posted;
+  if (typeof posted === 'object') return posted.name || 'System';
+  return 'System';
+};
+
+const getPostedByEmail = (entry) => {
+  const posted = entry?.posted_by;
+  if (posted && typeof posted === 'object') return posted.email || '';
+  return '';
+};
+
+  const getStatusVariant = (status) => {
   switch (status) {
     case 'posted': return 'default';
+    case 'reversed': return 'secondary';
     case 'draft': return 'outline'; // changed to outline to be less aggressive
     case 'voided': return 'destructive';
     default: return 'secondary';

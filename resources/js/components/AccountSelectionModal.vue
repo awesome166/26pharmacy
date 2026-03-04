@@ -29,7 +29,11 @@ const accounts = computed(() => {
 });
 
 const hasPlatformRole = computed(() => {
-  return page.props.auth.user.roles?.some((r: any) => r.name === 'Super Admin' && r.zeus_level === 'system');
+  return Boolean(
+    (page.props.auth as any).is_system_zeus
+      || (page.props.auth as any).is_zeus
+      || (page.props.auth as any).permissions?.includes('*')
+  );
 });
 
 const isSelecting = ref(false);

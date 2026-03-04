@@ -47,7 +47,7 @@
               <SelectValue placeholder="Select parent" />
             </SelectTrigger>
             <SelectContent class="max-h-[200px]">
-              <SelectItem :value="null">None (Top Level)</SelectItem>
+              <SelectItem value="">None (Top Level)</SelectItem>
               <!-- Flattened list needed here really, or filter by type -->
               <SelectItem v-for="acc in parentOptions" :key="acc.id" :value="acc.id" :disabled="acc.id === form.id">
                 {{ acc.code }} - {{ acc.name }}
@@ -80,7 +80,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue';
+import { computed, watch } from 'vue';
 import { useForm } from '@inertiajs/vue3';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -105,10 +105,25 @@ const form = useForm({
   code: props.account?.code || '',
   name: props.account?.name || '',
   type: props.account?.type || '',
-  parent_id: props.account?.parent_id || null,
+  parent_id: props.account?.parent_id || '',
   description: props.account?.description || '',
   is_group: props.account?.is_group || false,
 });
+
+watch(
+  () => props.account,
+  (account) => {
+    form.id = account?.id || null;
+    form.code = account?.code || '';
+    form.name = account?.name || '';
+    form.type = account?.type || '';
+    form.parent_id = account?.parent_id || '';
+    form.description = account?.description || '';
+    form.is_group = account?.is_group || false;
+    form.clearErrors();
+  },
+  { immediate: true },
+);
 
 // Filter accounts that can be parents (same type, usually)
 const parentOptions = computed(() => {
@@ -116,15 +131,20 @@ const parentOptions = computed(() => {
 });
 
 const submit = () => {
+  const payload = {
+    ...form.data(),
+    parent_id: form.parent_id || null,
+  };
+
   if (isEditing.value) {
-    form.put(route('accounting.accounts.update', props.account.id), {
+    form.transform(() => payload).put(route('accounting.accounts.update', props.account.id), {
       onSuccess: () => {
         emit('success');
         emit('close');
       },
     });
   } else {
-    form.post(route('accounting.accounts.store'), {
+    form.transform(() => payload).post(route('accounting.accounts.store'), {
       onSuccess: () => {
         emit('success');
         emit('close');

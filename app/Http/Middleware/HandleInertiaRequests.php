@@ -39,16 +39,20 @@ class HandleInertiaRequests extends Middleware
     public function share(Request $request): array
     {
         [$message, $author] = str(Inspiring::quotes()->random())->explode('-');
+        $user = $request->user();
+        $abac = AbacPermissions::getFrontendAuthPayload($user);
 
         return [
             ...parent::share($request),
             'name' => config('app.name'),
-            // 'quote' => ['message' => trim($message), 'author' => trim($author)],
+            'quote' => ['message' => trim($message), 'author' => trim($author)],
             'auth' => [
-                'user' => $request->user(),
-                'accounts' => $request->user()?->accounts,
+                'user' => $user,
+                'accounts' => $user?->accounts,
                 'current_account_id' => app(\AbacPermissions\Tenancy\TenantContext::class)->getAccountId(),
-                'permissions' => $request->user()?->getAllPermissions() ?? [],
+                'permissions' => $abac['permissions'] ?? [],
+                'is_zeus' => (bool) ($abac['is_zeus'] ?? false),
+                'is_system_zeus' => (bool) ($abac['is_system_zeus'] ?? false),
                 'settings' => fn () => SystemSetting::getMergedSettings(),
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',

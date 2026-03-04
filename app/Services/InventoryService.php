@@ -38,18 +38,26 @@ class InventoryService
      */
     public function searchDrugs(string $query, int $perPage = 15)
     {
+        $query = trim($query);
+        if ($query === '') {
+            return $this->getStockLevels($perPage);
+        }
+
         // Use joins instead of whereHas for better performance
         return \App\Models\Inventory::select('inventory.*')
             ->join('drugs', 'inventory.drug_id', '=', 'drugs.id')
             ->leftJoin('batches', 'inventory.batch_id', '=', 'batches.id')
             ->where('inventory.is_active', true)
             ->where(function ($q) use ($query) {
-                // Remove leading % for better index usage
-                $q->where('drugs.name', 'like', "{$query}%")
-                    ->orWhere('drugs.generic_name', 'like', "{$query}%")
-                    ->orWhere('batches.id', 'like', "{$query}%");
+                $q->where('drugs.name', 'like', "%{$query}%")
+                    ->orWhere('drugs.generic_name', 'like', "%{$query}%")
+                    ->orWhere('drugs.strength', 'like', "%{$query}%")
+                    ->orWhere('inventory.location', 'like', "%{$query}%")
+                    ->orWhere('batches.lot_number', 'like', "%{$query}%")
+                    ->orWhere('batches.name', 'like', "%{$query}%")
+                    ->orWhere('batches.id', 'like', "%{$query}%");
             })
-            ->with(['drug:id,name,strength,generic_name', 'batch:id,expiry_date'])
+            ->with(['drug:id,name,strength,generic_name', 'batch:id,lot_number,name,expiry_date'])
             ->paginate($perPage);
     }
 

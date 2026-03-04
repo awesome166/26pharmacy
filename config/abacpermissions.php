@@ -54,10 +54,10 @@ return [
     */
     'models' => [
         'user' => \App\Models\User::class, // Defaults to App\Models\User
-        'account' => \AbacPermissions\Models\Account::class,
-        'role' => \AbacPermissions\Models\Role::class,
+        'account' => \App\Models\Account::class,
+        'role' => \App\Models\Role::class,
         'permission' => \AbacPermissions\Models\Permission::class,
-        'assigned_permission' => \AbacPermissions\Models\AssignedPermission::class,
+        'assigned_permission' => \App\Models\AssignedPermission::class,
         'activity_log' => \AbacPermissions\Models\ActivityLog::class,
     ],
 ];

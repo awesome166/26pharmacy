@@ -5,7 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use AbacPermissions\Tenancy\TenantContext;
 use Illuminate\Support\Facades\Cache;
-use Inertia\Inertia;
+use Illuminate\Support\Facades\DB;
 
 class SystemSetting extends Model
 {
@@ -33,6 +33,7 @@ class SystemSetting extends Model
     public static function getValue(string $key, ?string $default = null)
     {
         $accountId = app(TenantContext::class)->getAccountId();
+        static::ensureDefaultsAvailable($accountId);
         $cacheKey = "system_setting:{$accountId}:{$key}";
 
         return Cache::remember($cacheKey, 3600, function () use ($key, $accountId, $default) {
@@ -78,21 +79,8 @@ class SystemSetting extends Model
             );
         }
 
-        // Normalize boolean values to 1/0 for consistent storage
-        if (is_bool($value)) {
-            $value = $value ? '1' : '0';
-        }
-
-        // Use DB updateOrInsert to avoid Eloquent composite key limitations
-        $result = \Illuminate\Support\Facades\DB::table('system_settings')->updateOrInsert(
-            ['key' => $key, 'account_id' => $accountId],
-            [
-                'value' => $value,
-                'type' => $type,
-                'updated_at' => now(),
-                'created_at' => now()
-            ]
-        );
+        $value = static::normalizeStoredValue($value);
+        $result = static::upsertSetting($key, $accountId, $value, $type);
 
         // Clear cache for this specific setting and merged settings
         self::clearCache($accountId, $key);
@@ -115,6 +103,7 @@ class SystemSetting extends Model
         'sales_add_tax'                             => false,
         'sales_enable_loyalty'                      => false,
         'sales_print_auto_receipt'                  => false,
+        'accounting_enabled'                        => false,
 
         // System / Platform settings
         'system_maintenance_mode'                   => false,
@@ -133,6 +122,8 @@ class SystemSetting extends Model
         if ($accountId === null) {
             $accountId = app(TenantContext::class)->getAccountId();
         }
+
+        static::ensureDefaultsAvailable($accountId);
 
         // 1. Start with all-false model defaults
         $defaults = collect(static::$defaults);
@@ -167,6 +158,61 @@ class SystemSetting extends Model
     }
 
     /**
+     * Ensure persistent rows exist for the current context.
+     * This avoids "missing config" states on first use.
+     */
+    public static function ensureDefaultsAvailable(?string $accountId = null, array $overrides = []): void
+    {
+        if ($accountId !== null) {
+            static::seedTenantDefaults($accountId, $overrides);
+            static::seedPlatformDefaults();
+            return;
+        }
+
+        static::seedPlatformDefaults($overrides);
+    }
+
+    public static function seedTenantDefaults(string $accountId, array $overrides = []): void
+    {
+        foreach (static::$defaults as $key => $default) {
+            if (str_starts_with($key, 'system_')) {
+                continue;
+            }
+            static::insertIfMissing($key, $accountId, static::normalizeStoredValue($default), 'tenant');
+        }
+
+        foreach ($overrides as $key => $value) {
+            if (str_starts_with((string) $key, 'system_')) {
+                continue;
+            }
+
+            static::upsertSetting($key, $accountId, static::normalizeStoredValue($value), 'tenant');
+        }
+
+        static::clearCache($accountId);
+    }
+
+    public static function seedPlatformDefaults(array $overrides = []): void
+    {
+        foreach (static::$defaults as $key => $default) {
+            if (!str_starts_with($key, 'system_')) {
+                continue;
+            }
+            static::insertIfMissing($key, null, static::normalizeStoredValue($default), 'platform');
+        }
+
+        foreach ($overrides as $key => $value) {
+            if (!str_starts_with((string) $key, 'system_')) {
+                continue;
+            }
+
+            static::upsertSetting($key, null, static::normalizeStoredValue($value), 'platform');
+        }
+
+        static::clearCache(null);
+    }
+
+    /**
      * Clear cache for system settings.
      *
      * @param string|null $accountId Account ID to clear cache for
@@ -174,21 +220,70 @@ class SystemSetting extends Model
      */
     public static function clearCache(?string $accountId = null, ?string $key = null)
     {
-        if ($accountId === null) {
-            $accountId = app(TenantContext::class)->getAccountId();
-        }
+        $resolvedAccountId = $accountId ?? app(TenantContext::class)->getAccountId();
 
         if ($key) {
             // Clear specific setting cache
-            Cache::forget("system_setting:{$accountId}:{$key}");
+            Cache::forget("system_setting:{$resolvedAccountId}:{$key}");
         }
 
         // Always clear merged settings cache when any setting changes
-        Cache::forget("system_settings:merged:{$accountId}");
+        Cache::forget("system_settings:merged:{$resolvedAccountId}");
+        Cache::forget("system_settings:merged:null");
+    }
 
-        // Also clear platform merged settings if this is a platform setting
-        if ($accountId === null) {
-            Cache::forget("system_settings:merged:null");
+    protected static function normalizeStoredValue($value)
+    {
+        if (is_bool($value)) {
+            return $value ? '1' : '0';
         }
+
+        if (is_array($value)) {
+            return json_encode($value);
+        }
+
+        return $value;
+    }
+
+    protected static function upsertSetting(string $key, ?string $accountId, $value, string $type): bool
+    {
+        $now = now();
+        $query = DB::table('system_settings')->where('key', $key);
+        $accountId === null
+            ? $query->whereNull('account_id')
+            : $query->where('account_id', $accountId);
+
+        $existing = $query->first();
+
+        if ($existing) {
+            return (bool) $query->update([
+                'value' => $value,
+                'type' => $type,
+                'updated_at' => $now,
+            ]);
+        }
+
+        return (bool) DB::table('system_settings')->insert([
+            'key' => $key,
+            'account_id' => $accountId,
+            'value' => $value,
+            'type' => $type,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+    }
+
+    protected static function insertIfMissing(string $key, ?string $accountId, $value, string $type): bool
+    {
+        $query = DB::table('system_settings')->where('key', $key);
+        $accountId === null
+            ? $query->whereNull('account_id')
+            : $query->where('account_id', $accountId);
+
+        if ($query->exists()) {
+            return true;
+        }
+
+        return static::upsertSetting($key, $accountId, $value, $type);
     }
 }

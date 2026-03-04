@@ -27,11 +27,13 @@ const form = useForm({
   drug_id: '',
   expiry_date: '',
   lot_number: '',
+  supplier: '',
   manufacturer: '',
   cost_price: 0,
   selling_price: 0, // Added for Direct Mode
   quantity: 0,
-  name: '' // Added as per platform migration requirement
+  name: '',
+  location: '',
 });
 
 const isEditing = ref(false);
@@ -47,11 +49,13 @@ const openDialog = async (drugId: string = '', batchToEdit: any = null) => {
     form.drug_id = batchToEdit.drug_id;
     form.expiry_date = batchToEdit.expiry_date ? batchToEdit.expiry_date.split('T')[0] : '';
     form.lot_number = batchToEdit.lot_number;
-    form.manufacturer = batchToEdit.manufacturer;
+    form.supplier = batchToEdit.supplier || batchToEdit.manufacturer || '';
+    form.manufacturer = batchToEdit.manufacturer || batchToEdit.supplier || '';
     form.cost_price = batchToEdit.cost_price;
     form.selling_price = batchToEdit.selling_price;
     form.quantity = batchToEdit.quantity;
     form.name = batchToEdit.name;
+    form.location = batchToEdit.storage_location || batchToEdit.location || '';
 
     // Set initial selected drug for display
     if (batchToEdit.drug) {
@@ -149,12 +153,16 @@ defineExpose({ openDialog });
                 <CommandList>
                   <CommandEmpty>{{ loadingDrugs ? 'Loading...' : 'No drug found.' }}</CommandEmpty>
                   <CommandGroup>
-                    <CommandItem v-for="drug in drugs" :key="drug.drug_id" :value="drug.drug_id" @select="() => {
+                    <CommandItem
+                      v-for="drug in drugs"
+                      :key="drug.id"
+                      :value="`${drug.name || ''} ${drug.generic_name || ''} ${drug.strength || ''}`.trim()"
+                      @select="() => {
                       selectedDrug = drug;
-                      form.drug_id = drug.drug_id;
+                      form.drug_id = drug.id;
                       openDrugSearch = false;
                     }">
-                      <Check :class="cn('mr-2 h-4 w-4', form.drug_id === drug.drug_id ? 'opacity-100' : 'opacity-0')" />
+                      <Check :class="cn('mr-2 h-4 w-4', form.drug_id === drug.id ? 'opacity-100' : 'opacity-0')" />
                       <div class="flex flex-col">
                         <span>{{ drug.name }}</span>
                         <span class="text-xs text-muted-foreground">{{ drug.strength }}</span>
@@ -168,14 +176,20 @@ defineExpose({ openDialog });
         </div>
 
         <div class="space-y-2">
-          <Label>Batch Name / Tag</Label>
-          <Input v-model="form.name" placeholder="e.g. Pfizer-2024-A" />
+          <Label>Internal Batch Label (Optional)</Label>
+          <Input v-model="form.name" placeholder="e.g. Receiving-2026-03-04-A" />
+          <p class="text-xs text-muted-foreground">
+            Use this for your internal naming only.
+          </p>
         </div>
 
         <div class="grid grid-cols-2 gap-4">
           <div class="space-y-2">
-            <Label>Lot Number</Label>
-            <Input v-model="form.lot_number" />
+            <Label>Supplier Batch / Lot Number (Required)</Label>
+            <Input v-model="form.lot_number" placeholder="e.g. LOT-2026-03-A" />
+            <p class="text-xs text-muted-foreground">
+              Enter the manufacturer/supplier lot printed on the package or invoice.
+            </p>
           </div>
           <div class="space-y-2">
             <Label>Expiry Date</Label>
@@ -184,13 +198,18 @@ defineExpose({ openDialog });
         </div>
 
         <div class="space-y-2">
-          <Label>Manufacturer</Label>
-          <Input v-model="form.manufacturer" />
+          <Label>Supplier</Label>
+          <Input v-model="form.supplier" placeholder="Supplier name" />
+        </div>
+
+        <div class="space-y-2">
+          <Label>Storage Location / Shelf</Label>
+          <Input v-model="form.location" placeholder="e.g. Shelf B-12" />
         </div>
 
         <div class="grid grid-cols-2 gap-4">
           <div class="space-y-2">
-            <Label>Cost Price (Global)</Label>
+            <Label>Cost Price (Per Unit)</Label>
             <Input type="number" v-model="form.cost_price" step="0.01" />
           </div>
           <div class="space-y-2">
@@ -200,12 +219,12 @@ defineExpose({ openDialog });
         </div>
         <div class="grid grid-cols-2 gap-4" v-if="!batchMode">
           <div class="space-y-2">
-            <Label>Selling Price</Label>
+            <Label>Selling Price (Per Unit)</Label>
             <Input type="number" v-model="form.selling_price" step="0.01" />
           </div>
           <div class="space-y-2 flex items-end pb-2">
             <span class="text-xs text-muted-foreground">
-              Batch mode {{ batchMode ? 'enabled' : 'disabled' }} - Direct: Item will be added to inventory immediately.
+              Batch mode {{ batchMode ? 'enabled' : 'disabled' }}. Prices above are treated as per-unit values.
             </span>
           </div>
         </div>

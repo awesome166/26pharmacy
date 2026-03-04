@@ -12,12 +12,12 @@
             "source": {
                 "type": "git",
                 "url": "https://github.com/awesome166/laravel_abac.git",
-                "reference": "14168b1d2396408423c85657bf1c55eb719cadbb"
+                "reference": "4123bbfdde1490d7dab4267317a51fb79cd29e3f"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/awesome166/laravel_abac/zipball/14168b1d2396408423c85657bf1c55eb719cadbb",
-                "reference": "14168b1d2396408423c85657bf1c55eb719cadbb",
+                "url": "https://api.github.com/repos/awesome166/laravel_abac/zipball/4123bbfdde1490d7dab4267317a51fb79cd29e3f",
+                "reference": "4123bbfdde1490d7dab4267317a51fb79cd29e3f",
                 "shasum": ""
             },
             "require": {
@@ -92,10 +92,10 @@
                 "saas"
             ],
             "support": {
-                "source": "https://github.com/awesome166/laravel_abac/tree/v1.2.10",
+                "source": "https://github.com/awesome166/laravel_abac/tree/v1.3.0",
                 "issues": "https://github.com/awesome166/laravel_abac/issues"
             },
-            "time": "2026-02-21T08:01:25+00:00"
+            "time": "2026-03-03T15:08:50+00:00"
         },
         {
             "name": "bacon/bacon-qr-code",

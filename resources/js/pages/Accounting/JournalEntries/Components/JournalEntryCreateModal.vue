@@ -177,5 +177,5 @@ const submit = () => {
   });
 };
 
-const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
+const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'GHS' }).format(val);
 </script>

@@ -156,7 +156,7 @@ onMounted(() => {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Lot Number</TableHead>
+                  <TableHead>Batch / Lot</TableHead>
                   <TableHead>Drug</TableHead>
                   <TableHead>Expiry</TableHead>
                   <TableHead>Qty</TableHead>
@@ -175,7 +175,7 @@ onMounted(() => {
                   <TableCell>
                     <div class="flex flex-col">
                       <span class="font-medium">{{ batch.drug?.name }}</span>
-                      <span class="text-xs text-muted-foreground">{{ batch.manufacturer }}</span>
+                      <span class="text-xs text-muted-foreground">{{ batch.supplier || batch.manufacturer }}</span>
                     </div>
                   </TableCell>
                   <TableCell>

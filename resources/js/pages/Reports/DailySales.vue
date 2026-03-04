@@ -82,7 +82,7 @@ watch(selectedDate, () => {
 
             <div v-else class="space-y-6">
                 <!-- Financial Cards -->
-                <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
                     <Card>
                         <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
                             <CardTitle class="text-sm font-medium">Gross Sales</CardTitle>
@@ -117,6 +117,15 @@ watch(selectedDate, () => {
                         <CardContent>
                             <div class="text-2xl font-bold">{{ formatCurrency(summary?.gross_profit) }}</div>
                             <p class="text-xs text-muted-foreground">Net Sales - Cost</p>
+                        </CardContent>
+                    </Card>
+                    <Card>
+                        <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
+                            <CardTitle class="text-sm font-medium">Total Cost</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <div class="text-2xl font-bold">{{ formatCurrency(summary?.total_cost) }}</div>
+                            <p class="text-xs text-muted-foreground">Cost of items sold</p>
                         </CardContent>
                     </Card>
                 </div>
@@ -207,6 +216,9 @@ watch(selectedDate, () => {
                                     <th class="py-2">Customer</th>
                                     <th class="py-2">Payment</th>
                                     <th class="py-2 text-right">Total</th>
+                                    <th class="py-2 text-right">Cost</th>
+                                    <th class="py-2 text-right">Profit</th>
+                                    <th class="py-2 text-right">Margin %</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -217,6 +229,11 @@ watch(selectedDate, () => {
                                     <td class="py-2">{{ sale.customer_name || 'Walk-in' }}</td>
                                     <td class="py-2 capitalize">{{ sale.payment_type }}</td>
                                     <td class="py-2 text-right font-medium">{{ formatCurrency(sale.total_amount) }}</td>
+                                    <td class="py-2 text-right">{{ formatCurrency(sale.total_cost) }}</td>
+                                    <td class="py-2 text-right" :class="Number(sale.gross_profit) < 0 ? 'text-red-600' : 'text-emerald-600'">
+                                        {{ formatCurrency(sale.gross_profit) }}
+                                    </td>
+                                    <td class="py-2 text-right">{{ Number(sale.gross_margin || 0).toFixed(2) }}%</td>
                                 </tr>
                             </tbody>
                         </table>

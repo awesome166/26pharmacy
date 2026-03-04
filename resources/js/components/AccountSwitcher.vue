@@ -22,7 +22,8 @@ const { currentAccountId, setAccount } = useAccount()
 const page = usePage();
 
 const hasPlatformRole = computed(() => {
-  return (page.props.auth as any).user.roles?.some((r: any) => r.name === 'Super Admin' && r.zeus_level === 'system');
+  const auth = page.props.auth as any;
+  return Boolean(auth?.is_system_zeus || auth?.is_zeus || auth?.permissions?.includes('*'));
 });
 
 const onChange = (accountId: any) => {

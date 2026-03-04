@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head, useForm, router } from '@inertiajs/vue3';
+import { Head } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,8 +16,11 @@ import ReturnModal from '@/pages/Sales/ReturnModal.vue';
 import type { BreadcrumbItem } from '@/types';
 
 const props = defineProps({
+  inventory: Object,
   filters: Object,
   user: Object,
+  taxes: { type: Array, default: () => [] },
+  recentSales: { type: Array, default: () => [] },
 });
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -29,45 +32,31 @@ const breadcrumbs: BreadcrumbItem[] = [
 const search = ref(props.filters?.search || '');
 const scannerInput = ref('');
 const scannerRef = ref(null);
-const inventory = ref({ data: [], links: [] });
-const isLoading = ref(true);
+const inventory = ref(props.inventory ?? { data: [], links: [] });
+const isLoading = ref(false);
 
 const fetchInventory = (url = '/app/store') => {
   isLoading.value = true;
-  import('axios').then(({ default: axios }) => {
-    axios.get(url, {
-      params: { search: search.value },
-      headers: { 'Accept': 'application/json' }
+  fetch(`${url}${url.includes('?') ? '&' : '?'}search=${encodeURIComponent(search.value)}`, {
+    headers: { 'Accept': 'application/json' }
+  })
+    .then(res => res.json())
+    .then(data => {
+      inventory.value = data.data ? data.data : data;
     })
-      .then(response => {
-        inventory.value = response.data.data ? response.data.data : response.data; // Handle potential wrapping
-      })
-      .catch(error => {
-        console.error("Failed to fetch inventory", error);
-      })
-      .finally(() => {
-        isLoading.value = false;
-      });
-  });
+    .catch(error => {
+      console.error('Failed to fetch inventory', error);
+    })
+    .finally(() => {
+      isLoading.value = false;
+    });
 };
 
 // --- Tax Logic ---
-const activeTaxes = ref([]);
-
-const fetchTaxes = () => {
-  import('axios').then(({ default: axios }) => {
-    axios.get('/app/taxes', {
-      params: { active_only: 1, per_page: 100 },
-      headers: { 'Accept': 'application/json' }
-    }).then(response => {
-      activeTaxes.value = response.data.data ? response.data.data : response.data;
-    }).catch(err => console.error("Failed to fetch taxes", err));
-  });
-};
+const activeTaxes = ref(props.taxes ?? []);
 
 onMounted(() => {
-  fetchInventory();
-  fetchTaxes();
+  // No extra requests needed — all initial data comes from Inertia props
 });
 
 watch(search, debounce((value) => {
@@ -233,61 +222,153 @@ const returnModalOpen = ref(false);
 const selectedSaleForReturn = ref<any>(null);
 
 const openReturnModal = (sale: any) => {
-  // Fetch full sale details first to get items
-  import('axios').then(({ default: axios }) => {
-    axios.get(`/app/sales/${sale.id}`, {
-      headers: { 'Accept': 'application/json' }
+  fetch(`/app/sales/${sale.id}`, {
+    headers: { 'Accept': 'application/json' }
+  })
+    .then(res => res.json())
+    .then(data => {
+      selectedSaleForReturn.value = data.data || data;
+      returnModalOpen.value = true;
     })
-      .then(response => {
-        selectedSaleForReturn.value = response.data.data || response.data;
-        returnModalOpen.value = true;
-      })
-      .catch(error => {
-        console.error("Failed to fetch sale details for return", error);
-      });
-  });
+    .catch(error => {
+      console.error('Failed to fetch sale details for return', error);
+    });
 };
 
 // Customer Information
 const showCustomerInfo = ref(false);
+const customerLookupLoading = ref(false);
+const customerLookupStatus = ref('');
 const customerInfo = ref({
+  id: '',
   name: '',
   phone: '',
   email: '',
-  dob: ''
+  dob: '',
+  age: ''
 });
 
-// Recent sales for empty cart display
-const recentSales = ref<any[]>([]);
+const generateDobFromAge = (ageValue: string | number | null): string => {
+  const age = Number(ageValue);
+  if (!Number.isFinite(age) || age < 0) return '';
+
+  const today = new Date();
+  const dob = new Date(today.getFullYear() - age, today.getMonth(), today.getDate());
+  const yyyy = dob.getFullYear();
+  const mm = String(dob.getMonth() + 1).padStart(2, '0');
+  const dd = String(dob.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+};
+
+const calculateAgeFromDob = (dobValue: string): string => {
+  if (!dobValue) return '';
+  const dob = new Date(dobValue);
+  if (Number.isNaN(dob.getTime())) return '';
+
+  const today = new Date();
+  let age = today.getFullYear() - dob.getFullYear();
+  const monthDiff = today.getMonth() - dob.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dob.getDate())) {
+    age--;
+  }
+
+  return age >= 0 ? String(age) : '';
+};
+
+const lookupCustomerByPhone = debounce((phone: string) => {
+  const hadLinkedCustomer = Boolean(customerInfo.value.id);
+
+  if (!phone || phone.trim().length < 3) {
+    customerInfo.value.id = '';
+    customerLookupStatus.value = '';
+    return;
+  }
+
+  customerLookupLoading.value = true;
+  customerLookupStatus.value = '';
+
+  fetch(`/app/customers/by-phone?phone=${encodeURIComponent(phone.trim())}`, {
+    headers: { 'Accept': 'application/json' }
+  })
+    .then(res => res.json())
+    .then((data) => {
+      const customer = data?.data;
+      if (!customer) {
+        if (hadLinkedCustomer) {
+          customerInfo.value.name = '';
+          customerInfo.value.email = '';
+          customerInfo.value.dob = '';
+          customerInfo.value.age = '';
+        }
+        customerInfo.value.id = '';
+        customerLookupStatus.value = 'No customer found. Continue with new details.';
+        return;
+      }
+
+      customerInfo.value.id = customer.id ?? '';
+      customerInfo.value.name = customer.name ?? '';
+      customerInfo.value.email = customer.email ?? '';
+      customerInfo.value.dob = customer.dob ?? '';
+      customerInfo.value.age = customer.dob ? calculateAgeFromDob(customer.dob) : '';
+      customerLookupStatus.value = 'Customer found. Details auto-populated.';
+    })
+    .catch(() => {
+      customerLookupStatus.value = 'Could not check customer right now.';
+    })
+    .finally(() => {
+      customerLookupLoading.value = false;
+    });
+}, 350);
+
+watch(
+  () => customerInfo.value.age,
+  (age) => {
+    if (age === '' || age === null || age === undefined) return;
+    const generatedDob = generateDobFromAge(age);
+    if (generatedDob) {
+      customerInfo.value.dob = generatedDob;
+    }
+  }
+);
+
+watch(
+  () => customerInfo.value.phone,
+  (phone) => {
+    if (!showCustomerInfo.value) return;
+    lookupCustomerByPhone(phone || '');
+  }
+);
+
+// Recent sales from Inertia props (no extra request needed)
+const recentSales = ref<any[]>(props.recentSales ?? []);
 const loadingRecentSales = ref(false);
 
 const fetchRecentSales = () => {
   loadingRecentSales.value = true;
-  import('axios').then(({ default: axios }) => {
-    axios.get('/app/sales', {
-      params: { per_page: 10 },
-      headers: { 'Accept': 'application/json' }
+  fetch('/app/sales?per_page=10', {
+    headers: { 'Accept': 'application/json' }
+  })
+    .then(res => res.json())
+    .then(data => {
+      recentSales.value = data.data?.data || data.data || [];
     })
-      .then(response => {
-        recentSales.value = response.data.data?.data || response.data.data || [];
-      })
-      .catch(error => {
-        console.error("Failed to fetch recent sales", error);
-      })
-      .finally(() => {
-        loadingRecentSales.value = false;
-      });
-  });
+    .catch(error => {
+      console.error('Failed to fetch recent sales', error);
+    })
+    .finally(() => {
+      loadingRecentSales.value = false;
+    });
 };
-
-onMounted(() => {
-  fetchRecentSales();
-});
 
 const finalizeSale = () => {
   // Validate cash payment
   if (paymentType.value === 'cash' && cashReceived.value < totalAmount.value) {
     alert('Cash received is less than the total amount!');
+    return;
+  }
+
+  if (showCustomerInfo.value && !customerInfo.value.phone?.trim()) {
+    alert('Phone number is required to add customer information.');
     return;
   }
 
@@ -304,6 +385,7 @@ const finalizeSale = () => {
     cash_received: paymentType.value === 'cash' ? cashReceived.value : null,
     change_amount: paymentType.value === 'cash' ? changeAmount.value : null,
     // Include customer information if provided
+    customer_id: showCustomerInfo.value && customerInfo.value.id ? customerInfo.value.id : null,
     customer_name: showCustomerInfo.value && customerInfo.value.name ? customerInfo.value.name : null,
     customer_phone: showCustomerInfo.value && customerInfo.value.phone ? customerInfo.value.phone : null,
     customer_email: showCustomerInfo.value && customerInfo.value.email ? customerInfo.value.email : null,
@@ -317,105 +399,116 @@ const finalizeSale = () => {
       dosage_instructions: item.dosage_instructions
     }))
   };
-  // console.log(payload);
-  // return;
-  import('axios').then(({ default: axios }) => {
-    axios.post('/app/sales', payload, {
-      headers: { 'Accept': 'application/json' }
+
+  fetch('/app/sales', {
+    method: 'POST',
+    headers: {
+      'Accept': 'application/json',
+      'Content-Type': 'application/json',
+      'X-XSRF-TOKEN': decodeURIComponent(document.cookie.match(/XSRF-TOKEN=([^;]+)/)?.[1] || ''),
+    },
+    body: JSON.stringify(payload),
+  })
+    .then(res => {
+      if (!res.ok) throw new Error(`Sale failed: ${res.status}`);
+      return res.json();
     })
-      .then((response) => {
-        // Store sale data for receipt
-        lastSaleData.value = {
-          items: [...cart.value],
-          subtotal: subtotal.value,
-          taxAmount: taxAmount.value,
-          taxDetails: { ...taxDetails.value.breakdown }, // Snapshot tax details
-          totalAmount: totalAmount.value,
-          totalReturnedAmount: 0,
-          paymentType: paymentType.value,
-          cashReceived: cashReceived.value,
-          change: changeAmount.value,
-          date: new Date().toLocaleString(),
-          saleId: response.data?.id || response.data?.event_id || 'N/A',
-          servedBy: props.user?.name || 'Staff'
-        };
+    .then((data) => {
+      // Store sale data for receipt
+      lastSaleData.value = {
+        items: [...cart.value],
+        subtotal: subtotal.value,
+        taxAmount: taxAmount.value,
+        taxDetails: { ...taxDetails.value.breakdown }, // Snapshot tax details
+        totalAmount: totalAmount.value,
+        totalReturnedAmount: 0,
+        paymentType: paymentType.value,
+        cashReceived: cashReceived.value,
+        change: changeAmount.value,
+        date: new Date().toLocaleString(),
+        saleId: data?.id || data?.event_id || 'N/A',
+        servedBy: props.user?.name || 'Staff',
+        customer_name: payload.customer_name,
+        customer_phone: payload.customer_phone,
+        customer_email: payload.customer_email,
+        customer_dob: payload.customer_dob,
+      };
 
-        // Clear cart and reset
-        cart.value = [];
-        cashReceived.value = 0;
+      // Clear cart and reset
+      cart.value = [];
+      cashReceived.value = 0;
 
-        // Reset customer info
-        customerInfo.value = {
-          name: '',
-          phone: '',
-          email: '',
-          dob: ''
-        };
-        showCustomerInfo.value = false;
+      // Reset customer info
+      customerInfo.value = {
+        id: '',
+        name: '',
+        phone: '',
+        email: '',
+        dob: '',
+        age: ''
+      };
+      customerLookupStatus.value = '';
+      showCustomerInfo.value = false;
 
-        // Show receipt dialog
-        showReceipt.value = true;
+      // Show receipt dialog
+      showReceipt.value = true;
 
-        // Refresh recent sales and inventory
-        fetchRecentSales();
-        fetchInventory();
-      })
-      .catch((error) => {
-        console.error("Sale finalized error", error);
-      })
-      .finally(() => {
-        processing.value = false;
-      });
-  });
+      // Refresh recent sales and inventory
+      fetchRecentSales();
+      fetchInventory();
+    })
+    .catch((error) => {
+      console.error('Sale finalized error', error);
+    })
+    .finally(() => {
+      processing.value = false;
+    });
 };
 
 const viewSaleReceipt = (sale: any) => {
-  // Fetch full sale details with items
-  import('axios').then(({ default: axios }) => {
-    axios.get(`/app/sales/${sale.id}`, {
-      headers: { 'Accept': 'application/json' }
-    })
-      .then(response => {
-        const saleData = response.data.data || response.data;
-        // Reconstruct tax details if not stored (simplified for now, ideally backend stores snapshot)
-        // For historic sales, we might verify stored tax_amount vs assumed.
-        // For now, just show total tax as "Tax" if breakdown missing.
+  fetch(`/app/sales/${sale.id}`, {
+    headers: { 'Accept': 'application/json' }
+  })
+    .then(res => res.json())
+    .then(data => {
+      const saleData = data.data || data;
 
-        lastSaleData.value = {
-          id: saleData.id,
-          items: saleData.items || [],
-          subtotal: saleData.subtotal_amount,
-          taxAmount: saleData.tax_amount,
-          taxDetails: { 'Tax': saleData.tax_amount }, // Fallback
-          totalAmount: saleData.total_amount,
-          totalReturnedAmount: Number(saleData.total_returned_amount ?? 0),
-          paymentType: saleData.payment_type,
-          cashReceived: saleData.cash_received,
-          change: saleData.change_amount,
-          date: new Date(saleData.finalized_at || saleData.created_at).toLocaleString(),
-        };
-        showReceipt.value = true;
-      })
-      .catch(error => {
-        console.error("Failed to fetch sale details", error);
-      });
-  });
+      lastSaleData.value = {
+        id: saleData.id,
+        items: saleData.items || [],
+        subtotal: saleData.subtotal_amount,
+        taxAmount: saleData.tax_amount,
+        taxDetails: { 'Tax': saleData.tax_amount },
+        totalAmount: saleData.total_amount,
+        totalReturnedAmount: Number(saleData.total_returned_amount ?? 0),
+        paymentType: saleData.payment_type,
+        cashReceived: saleData.cash_received,
+        change: saleData.change_amount,
+        date: new Date(saleData.finalized_at || saleData.created_at).toLocaleString(),
+        customer_name: saleData.customer_name,
+        customer_phone: saleData.customer_phone,
+        customer_email: saleData.customer_email,
+        customer_dob: saleData.customer_dob,
+      };
+      showReceipt.value = true;
+    })
+    .catch(error => {
+      console.error('Failed to fetch sale details', error);
+    });
 };
 
 const printDosageInstructions = (sale: any) => {
-  // Fetch full sale details with items
-  import('axios').then(({ default: axios }) => {
-    axios.get(`/app/sales/${sale.id}`, {
-      headers: { 'Accept': 'application/json' }
+  fetch(`/app/sales/${sale.id}`, {
+    headers: { 'Accept': 'application/json' }
+  })
+    .then(res => res.json())
+    .then(data => {
+      dosageSaleData.value = data.data || data;
+      showDosageDialog.value = true;
     })
-      .then(response => {
-        dosageSaleData.value = response.data.data || response.data;
-        showDosageDialog.value = true;
-      })
-      .catch(error => {
-        console.error("Failed to fetch sale details", error);
-      });
-  });
+    .catch(error => {
+      console.error('Failed to fetch sale details', error);
+    });
 };
 
 const printReceipt = () => {
@@ -497,6 +590,14 @@ const printReceipt = () => {
         <h2>26 PHARMACY</h2>
         <p>Receipt #${lastSaleData.value?.saleId}</p>
         <p>${lastSaleData.value?.date}</p>
+        ${(lastSaleData.value?.customer_name || lastSaleData.value?.customer_phone || lastSaleData.value?.customer_email || lastSaleData.value?.customer_dob) ? `
+          <div style="font-size: 0.85em; margin-top: 6px;">
+            ${lastSaleData.value?.customer_name ? `<p style="margin: 2px 0;">Customer: ${lastSaleData.value.customer_name}</p>` : ''}
+            ${lastSaleData.value?.customer_phone ? `<p style="margin: 2px 0;">Phone: ${lastSaleData.value.customer_phone}</p>` : ''}
+            ${lastSaleData.value?.customer_email ? `<p style="margin: 2px 0;">Email: ${lastSaleData.value.customer_email}</p>` : ''}
+            ${lastSaleData.value?.customer_dob ? `<p style="margin: 2px 0;">DOB: ${new Date(lastSaleData.value.customer_dob).toLocaleDateString()}</p>` : ''}
+          </div>
+        ` : ''}
       </div>
 
       <div class="items">
@@ -868,13 +969,15 @@ const formatDate = (dateString: string | number | Date) => {
               <!-- Customer Info Form -->
               <div v-if="showCustomerInfo" class="mt-3 space-y-3 p-4 border rounded-lg bg-muted/50">
                 <div>
-                  <Label for="customerName" class="text-sm font-medium">Customer Name</Label>
-                  <Input id="customerName" v-model="customerInfo.name" placeholder="Enter customer name" class="mt-1" />
-                </div>
-                <div>
-                  <Label for="customerPhone" class="text-sm font-medium">Phone Number</Label>
+                  <Label for="customerPhone" class="text-sm font-medium">Phone Number *</Label>
                   <Input id="customerPhone" v-model="customerInfo.phone" type="tel" placeholder="Enter phone number"
                     class="mt-1" />
+                  <p v-if="customerLookupLoading" class="text-xs text-muted-foreground mt-1">Checking customer...</p>
+                  <p v-if="customerLookupStatus" class="text-xs text-muted-foreground mt-1">{{ customerLookupStatus }}</p>
+                </div>
+                <div>
+                  <Label for="customerName" class="text-sm font-medium">Customer Name</Label>
+                  <Input id="customerName" v-model="customerInfo.name" placeholder="Enter customer name" class="mt-1" />
                 </div>
                 <div>
                   <Label for="customerEmail" class="text-sm font-medium">Email (Optional)</Label>
@@ -883,7 +986,13 @@ const formatDate = (dateString: string | number | Date) => {
                 </div>
                 <div>
                   <Label for="customerDob" class="text-sm font-medium">Date of Birth (Optional)</Label>
-                  <Input id="customerDob" v-model="customerInfo.dob" type="date" class="mt-1" />
+                  <div class="mt-1 grid grid-cols-3 gap-2 items-center">
+                    <Input id="customerDob" v-model="customerInfo.dob" type="date" class="col-span-2" />
+                    <div class="flex items-center gap-2">
+                      <span class="text-xs text-muted-foreground">Age</span>
+                      <Input v-model="customerInfo.age" type="number" min="0" max="130" placeholder="0" />
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

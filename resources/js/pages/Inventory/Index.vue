@@ -30,6 +30,7 @@ const createBatchDialog = ref();
 const inventory = ref({ data: [], links: [], meta: {}, current_page: 1, last_page: 1, total: 0 });
 const isLoading = ref(true);
 const currentPage = ref(1);
+const drugs = ref<any[]>([]);
 
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Dashboard', href: '/dashboard' },
@@ -63,6 +64,7 @@ const fetchInventory = (page = 1) => {
 
 onMounted(() => {
     fetchInventory();
+    fetchDrugs();
 });
 
 watch(search, debounce((value) => {
@@ -70,17 +72,26 @@ watch(search, debounce((value) => {
 }, 300));
 
 const adjustForm = useForm({
-    branch_id: '',
-    batch_id: '',
+    inventory_id: '',
     quantity_change: 0,
     reason: 'Manual Adjustment',
+    location: '',
+    drug_id: '',
+    selling_price: 0,
+    cost_price: 0,
+    remove_from_inventory: false,
 });
 
-const openAdjustModal = (item: { branch_id: string; batch_id: string; }) => {
+const openAdjustModal = (item: any) => {
     selectedItem.value = item;
-    adjustForm.branch_id = item.branch_id;
-    adjustForm.batch_id = item.batch_id;
+    adjustForm.inventory_id = item.inventory_id;
     adjustForm.quantity_change = 0;
+    adjustForm.reason = 'Manual Adjustment';
+    adjustForm.location = item.location || '';
+    adjustForm.drug_id = item.drug_id || '';
+    adjustForm.selling_price = Number(item.selling_price || 0);
+    adjustForm.cost_price = Number(item.cost_price || 0);
+    adjustForm.remove_from_inventory = false;
     adjustOpen.value = true;
 };
 
@@ -93,6 +104,28 @@ const submitAdjustment = () => {
             fetchInventory(currentPage.value);
         },
     });
+};
+
+const fetchDrugs = () => {
+    import('axios').then(({ default: axios }) => {
+        axios.get('/app/drugs', {
+            params: { per_page: 200, wantsJson: 1 },
+            headers: { 'Accept': 'application/json' },
+        })
+            .then((response) => {
+                const payload = response.data?.data;
+                drugs.value = payload?.data || payload || [];
+            })
+            .catch((error) => {
+                console.error('Failed to fetch drugs', error);
+            });
+    });
+};
+
+const removeFromInventory = () => {
+    adjustForm.remove_from_inventory = true;
+    adjustForm.reason = adjustForm.reason || 'Removed from inventory';
+    submitAdjustment();
 };
 
 const formatDate = (dateString: string | number | Date) => {
@@ -166,26 +199,24 @@ const openCreateBatch = () => {
                                 <tr class="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted">
                                     <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Drug
                                         Details</th>
-                                    <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Batch
-                                        Info</th>
+                                    <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Batch / Lot</th>
                                     <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
                                         Expiry</th>
-                                    <th class="h-12 px-4 text-right align-middle font-medium text-muted-foreground">
-                                        Price</th>
+                                    <th class="h-12 px-4 text-right align-middle font-medium text-muted-foreground">Prices</th>
+                                    <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Shelf / Location</th>
                                     <th class="h-12 px-4 text-right align-middle font-medium text-muted-foreground">
                                         Stock Level</th>
-                                    <th class="h-12 px-4 text-right align-middle font-medium text-muted-foreground">
-                                        Actions</th>
+                                    <th class="h-12 px-4 text-right align-middle font-medium text-muted-foreground">Actions</th>
                                 </tr>
                             </thead>
                             <tbody class="[&_tr:last-child]:border-0">
                                 <tr v-if="isLoading">
-                                    <td colspan="6" class="p-8 text-center text-muted-foreground">
+                                    <td colspan="7" class="p-8 text-center text-muted-foreground">
                                         Loading inventory...
                                     </td>
                                 </tr>
                                 <tr v-else-if="!inventory.data || inventory.data.length === 0">
-                                    <td colspan="6" class="p-8 text-center text-muted-foreground">
+                                    <td colspan="7" class="p-8 text-center text-muted-foreground">
                                         No inventory found.
                                     </td>
                                 </tr>
@@ -197,7 +228,7 @@ const openCreateBatch = () => {
                                     </td>
                                     <td class="p-4 align-middle">
                                         <div class="font-mono text-xs bg-muted px-2 py-1 rounded inline-block">
-                                            {{ item.lot_number || item.batch_id.substring(0, 8) }}
+                                            {{ item.batch_number || item.lot_number || item.batch_id.substring(0, 8) }}
                                         </div>
                                     </td>
                                     <td class="p-4 align-middle">
@@ -208,7 +239,11 @@ const openCreateBatch = () => {
                                         </Badge>
                                     </td>
                                     <td class="p-4 align-middle text-right font-medium">
-                                        {{ formatCurrency(item.selling_price) }}
+                                        <div>Sell: {{ formatCurrency(item.selling_price) }}</div>
+                                        <div class="text-xs text-muted-foreground">Cost: {{ formatCurrency(item.cost_price) }}</div>
+                                    </td>
+                                    <td class="p-4 align-middle text-sm text-muted-foreground">
+                                        {{ item.location || 'Unassigned shelf' }}
                                     </td>
                                     <td class="p-4 align-middle text-right">
                                         <div class="flex flex-col items-end">
@@ -258,15 +293,35 @@ const openCreateBatch = () => {
 
         <!-- Adjust Stock Modal -->
         <Dialog :open="adjustOpen" @update:open="adjustOpen = $event">
-            <DialogContent class="sm:max-w-[425px]">
+            <DialogContent class="sm:max-w-[560px]">
                 <DialogHeader>
-                    <DialogTitle>Adjust Stock</DialogTitle>
+                    <DialogTitle>Adjust Inventory Item</DialogTitle>
                     <DialogDescription>
-                        Update stock quantity for <strong>{{ selectedItem?.drug_name }}</strong>.
-                        This action will be logged in the audit trail.
+                        Update quantity, location, product mapping and prices for
+                        <strong>{{ selectedItem?.drug_name }}</strong>.
                     </DialogDescription>
                 </DialogHeader>
                 <div class="grid gap-4 py-4">
+                    <div class="grid grid-cols-4 items-center gap-4">
+                        <Label class="text-right">Drug</Label>
+                        <select v-model="adjustForm.drug_id" class="col-span-3 rounded-md border px-3 py-2 text-sm">
+                            <option v-for="drug in drugs" :key="drug.id" :value="drug.id">
+                                {{ drug.name }}{{ drug.strength ? ` (${drug.strength})` : '' }}
+                            </option>
+                        </select>
+                    </div>
+                    <div class="grid grid-cols-4 items-center gap-4">
+                        <Label class="text-right">Shelf</Label>
+                        <Input v-model="adjustForm.location" class="col-span-3" placeholder="e.g. Shelf B-12" />
+                    </div>
+                    <div class="grid grid-cols-4 items-center gap-4">
+                        <Label class="text-right">Selling Price</Label>
+                        <Input type="number" step="0.01" min="0" v-model="adjustForm.selling_price" class="col-span-3" />
+                    </div>
+                    <div class="grid grid-cols-4 items-center gap-4">
+                        <Label class="text-right">Cost Price</Label>
+                        <Input type="number" step="0.01" min="0" v-model="adjustForm.cost_price" class="col-span-3" />
+                    </div>
                     <div class="grid grid-cols-4 items-center gap-4">
                         <Label class="text-right">Adjustment</Label>
                         <Input type="number" v-model="adjustForm.quantity_change" class="col-span-3 font-mono text-lg"
@@ -279,10 +334,13 @@ const openCreateBatch = () => {
                     </div>
                 </div>
                 <DialogFooter>
+                    <Button variant="destructive" @click="removeFromInventory" :disabled="adjustForm.processing">
+                        Remove from Inventory
+                    </Button>
                     <Button variant="ghost" @click="adjustOpen = false">Cancel</Button>
                     <Button type="submit" @click="submitAdjustment"
-                        :disabled="adjustForm.processing || adjustForm.quantity_change === 0">
-                        Confirm Adjustment
+                        :disabled="adjustForm.processing">
+                        Save Changes
                     </Button>
                 </DialogFooter>
             </DialogContent>

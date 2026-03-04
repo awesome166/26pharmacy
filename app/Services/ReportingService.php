@@ -19,12 +19,8 @@ class ReportingService
         $isGlobal = empty($accountId);
 
         // Fetch sales. If global, bypass tenant scope to fetch ALL sales.
-        $query = \App\Models\Sale::with(['items.inventory', 'items.drug', 'user'])
+        $query = \App\Models\Sale::with(['items.inventory', 'items.drug', 'user', 'customers'])
             ->whereDate('finalized_at', $date);
-
-        \Log::info("Sales Query: " . $query->toSql());
-        \Log::info("Sales Query: " . $query->get());
-        \Log::info("Sales Query: " . $query->get()->count());
 
         if ($isGlobal) {
             $query->withoutGlobalScope(\AbacPermissions\Tenancy\TenantScope::class);
@@ -184,8 +180,30 @@ class ReportingService
                 $summary->save();
             }
 
-            // Attach the actual sales records for the frontend to display
-            $summary->setRelation('transactions', $sales);
+            // Attach transaction records with per-sale cost/profit fields.
+            $transactions = $sales->map(function ($sale) {
+                $totalCost = 0.0;
+                foreach ($sale->items as $item) {
+                    $costPrice = (float) ($item->inventory->cost_price ?? 0);
+                    $totalCost += $costPrice * (float) $item->quantity;
+                }
+
+                $netSales = (float) ($sale->subtotal_amount ?? 0);
+                if ($netSales <= 0) {
+                    $netSales = max(0, (float) $sale->total_amount - (float) $sale->tax_amount);
+                }
+
+                $grossProfit = round($netSales - $totalCost, 2);
+                $margin = $netSales > 0 ? round(($grossProfit / $netSales) * 100, 2) : 0.0;
+
+                $sale->setAttribute('total_cost', round($totalCost, 2));
+                $sale->setAttribute('gross_profit', $grossProfit);
+                $sale->setAttribute('gross_margin', $margin);
+
+                return $sale;
+            });
+
+            $summary->setRelation('transactions', $transactions);
 
             return $summary;
 

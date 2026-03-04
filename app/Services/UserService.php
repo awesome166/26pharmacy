@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use AbacPermissions\Facades\AbacPermissions;
+
 /**
  * Service for managing users and their profiles.
  */
@@ -31,12 +33,16 @@ class UserService
 
         // Assign Role
         if (!empty($data['role_id'])) {
-            $user->roles()->attach($data['role_id']);
+            AbacPermissions::assignRole($user, $data['role_id']);
         }
 
         // Assign Direct Permissions
         if (!empty($data['permissions']) && is_array($data['permissions'])) {
-            $this->syncDirectPermissions($user, $data['permissions'], $tenantId);
+            AbacPermissions::syncUserPermissions(
+                $user->id,
+                $this->normalizePermissionsPayload($data['permissions']),
+                $tenantId
+            );
         }
 
         return $user;
@@ -68,13 +74,17 @@ class UserService
         // Sync Role
         if (isset($data['role_id'])) {
              // Sync roles (assuming single role per tenant context)
-             $user->roles()->sync([$data['role_id']]);
+             AbacPermissions::syncRoles($user, [$data['role_id']]);
         }
 
         // Sync Direct Permissions
         if (isset($data['permissions']) && is_array($data['permissions'])) {
             $tenantId = app(\AbacPermissions\Tenancy\TenantContext::class)->getAccountId();
-            $this->syncDirectPermissions($user, $data['permissions'], $tenantId);
+            AbacPermissions::syncUserPermissions(
+                $user->id,
+                $this->normalizePermissionsPayload($data['permissions']),
+                $tenantId
+            );
         }
 
         return true;
@@ -125,92 +135,35 @@ class UserService
         $user = \App\Models\User::findOrFail($userId);
 
         // Remove assignments
-         \AbacPermissions\Models\AssignedPermission::where('assignee_type', 'user')
+        \AbacPermissions\Models\AssignedPermission::where('assignee_type', 'user')
             ->where('assignee_id', $user->id)
             ->delete();
 
         return $user->delete();
     }
 
-    /**
-     * Sync direct permissions for a user using a diff/merge approach.
-     * Accepts the PermissionSelector payload: [{ id: string, access: string[] }]
-     *
-     * - Permissions in the new list but not existing → INSERT
-     * - Permissions in both lists with changed access → UPDATE
-     * - Permissions that existed but are not in the new list → DELETE
-     */
-    protected function syncDirectPermissions(\App\Models\User $user, array $permissions, ?string $tenantId)
+    protected function normalizePermissionsPayload(array $permissions): array
     {
-        $now = now();
+        $normalized = [];
 
-        // Build a map of incoming: permId => access (JSON string or null)
-        $incoming = [];
         foreach ($permissions as $perm) {
             if (is_string($perm)) {
-                $permId = $perm;
-                $access = null;
-            } else {
-                $permId = $perm['id'] ?? null;
-                $access = isset($perm['access']) && is_array($perm['access'])
-                    ? json_encode($perm['access'])
-                    : null;
+                $normalized[] = ['id' => $perm, 'access' => null];
+                continue;
             }
-            if ($permId) {
-                $incoming[$permId] = $access;
+
+            $permId = $perm['id'] ?? null;
+            if (!$permId) {
+                continue;
             }
-        }
 
-        // Fetch existing assignments for this user
-        $existing = \AbacPermissions\Models\AssignedPermission::where('assignee_type', 'user')
-            ->where('assignee_id', $user->id)
-            ->get()
-            ->keyBy('permission_id');
-
-        $existingIds = $existing->keys()->all();
-        $incomingIds = array_keys($incoming);
-
-        // IDs to delete (were present, no longer in new list)
-        $toDelete = array_diff($existingIds, $incomingIds);
-        if (!empty($toDelete)) {
-            \AbacPermissions\Models\AssignedPermission::where('assignee_type', 'user')
-                ->where('assignee_id', $user->id)
-                ->whereIn('permission_id', $toDelete)
-                ->delete();
-        }
-
-        // IDs to insert (new, not previously assigned)
-        $toInsert = array_diff($incomingIds, $existingIds);
-        $insertRecords = [];
-        foreach ($toInsert as $permId) {
-            $insertRecords[] = [
-                'id'            => \Illuminate\Support\Str::ulid()->toString(),
-                'assignee_type' => 'user',
-                'assignee_id'   => $user->id,
-                'permission_id' => $permId,
-                'account_id'    => $tenantId,
-                'access'        => $incoming[$permId],
-                'created_at'    => $now,
-                'updated_at'    => $now,
+            $normalized[] = [
+                'id' => $permId,
+                'access' => isset($perm['access']) && is_array($perm['access']) ? $perm['access'] : null,
+                'grantable' => isset($perm['grantable']) ? (bool) $perm['grantable'] : false,
             ];
         }
-        if (!empty($insertRecords)) {
-            \AbacPermissions\Models\AssignedPermission::insert($insertRecords);
-        }
 
-        // IDs that exist in both — update access if it changed
-        $toUpdate = array_intersect($existingIds, $incomingIds);
-        foreach ($toUpdate as $permId) {
-            $row       = $existing[$permId];
-            $newAccess = $incoming[$permId];
-            // Normalise existing access for comparison
-            $oldAccess = is_array($row->access)
-                ? json_encode($row->access)
-                : $row->access;
-
-            if ($oldAccess !== $newAccess) {
-                $row->update(['access' => $newAccess, 'updated_at' => $now]);
-            }
-        }
+        return $normalized;
     }
 }

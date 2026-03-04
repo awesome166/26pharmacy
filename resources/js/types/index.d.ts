@@ -3,8 +3,16 @@ import type { LucideIcon } from 'lucide-vue-next';
 
 export interface Auth {
     user: User;
+    accounts?: { id: number | string; name: string; plan?: string }[];
+    current_account_id?: string | null;
+    permissions?: string[];
+    is_zeus?: boolean;
+    is_system_zeus?: boolean;
     settings?: {
+        settings?: Record<string, any>;
+        exists?: boolean;
         inventory_batch_mode?: boolean;
+        accounting_enabled?: boolean;
         [key: string]: any;
     };
 }

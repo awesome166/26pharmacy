@@ -1,5 +1,5 @@
 import { ref, computed } from 'vue';
-import axios from 'axios';
+import { router } from '@inertiajs/vue3';
 
 // Assuming Echo is available globally or via injection
 declare global {
@@ -108,7 +108,13 @@ class SyncManagerClient {
     this.syncStatus.value = 'syncing';
 
     try {
-      await axios.post('/app/sync/push');
+      await new Promise<void>((resolve, reject) => {
+        router.post('/app/sync/push', {}, {
+          preserveState: true,
+          onSuccess: () => resolve(),
+          onError: (errors) => reject(errors),
+        });
+      });
       this.lastSyncTime.value = new Date();
       this.syncStatus.value = 'success';
     } catch (error) {
@@ -126,7 +132,13 @@ class SyncManagerClient {
     this.syncStatus.value = 'syncing';
 
     try {
-      await axios.post('/app/sync/pull');
+      await new Promise<void>((resolve, reject) => {
+        router.post('/app/sync/pull', {}, {
+          preserveState: true,
+          onSuccess: () => resolve(),
+          onError: (errors) => reject(errors),
+        });
+      });
       this.lastSyncTime.value = new Date();
       this.syncStatus.value = 'success';
     } catch (error) {

@@ -3,12 +3,14 @@
 namespace App\Services;
 
 use App\Services\EventLedgerService;
+use App\Services\AccountingService;
 use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Models\SalesReturn;
 use App\Models\SalesReturnItem;
 use App\Models\Inventory;
 use App\Models\Device;
+use App\Models\SystemSetting;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use AbacPermissions\Tenancy\TenantContext;
@@ -16,10 +18,12 @@ use AbacPermissions\Tenancy\TenantContext;
 class ReturnService
 {
     protected $ledger;
+    protected $accounting;
 
-    public function __construct(EventLedgerService $ledger)
+    public function __construct(EventLedgerService $ledger, AccountingService $accounting)
     {
         $this->ledger = $ledger;
+        $this->accounting = $accounting;
     }
 
     /**
@@ -151,6 +155,10 @@ class ReturnService
             ];
 
             $this->ledger->emitEvent($eventData);
+
+            if ((bool) SystemSetting::getValue('accounting_enabled', false)) {
+                $this->accounting->recordSaleReturn($salesReturn, $accountId, $user->id ?? null);
+            }
 
             return $salesReturn;
         });

@@ -13,6 +13,7 @@ class Batch extends Model
     use HasUlids;
 
     protected $primaryKey = 'id';
+    protected $appends = ['batch_number'];
 
     protected $fillable = [
         'id',
@@ -26,6 +27,7 @@ class Batch extends Model
         'lot_number',
         'quantity',
         'quantity_received',
+        'quantity_recieved',
         'cost_price',
         'name',
         'storage_location',
@@ -47,5 +49,10 @@ class Batch extends Model
     public function inventories(): HasMany
     {
         return $this->hasMany(Inventory::class, 'batch_id', 'id');
+    }
+
+    public function getBatchNumberAttribute(): ?string
+    {
+        return $this->lot_number;
     }
 }

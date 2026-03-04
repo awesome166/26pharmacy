@@ -10,6 +10,7 @@ use App\Models\Role;
 use AbacPermissions\Models\Permission;
 use AbacPermissions\Models\AssignedPermission;
 use AbacPermissions\Tenancy\TenantContext;
+use AbacPermissions\Facades\AbacPermissions;
 
 class RoleController extends Controller
 {
@@ -137,20 +138,35 @@ class RoleController extends Controller
      */
     protected function syncPermissions(Role $role, array $permissions, ?string $tenantId)
     {
-        // Use Eloquent syncWithPivotValues to handle:
-        // 1. Pivot ID generation (via AssignedPermission model)
-        // 2. Assignee ID and Type (via morphToMany relationship)
-        // 3. Additional columns like account_id
+        $payload = array_values(array_filter(array_map(function ($perm) {
+            $permId = $perm['id'] ?? null;
+            if (!$permId) {
+                return null;
+            }
 
-        $syncPayload = [];
-        foreach ($permissions as $perm) {
-            $syncPayload[$perm['id']] = [
-                'account_id' => $tenantId,
-                'assignee_type' => 'role',
-                'access' => isset($perm['access']) ? json_encode($perm['access']) : null, // Store access as JSON
+            return [
+                'id' => $permId,
+                'access' => isset($perm['access']) && is_array($perm['access']) ? $perm['access'] : null,
+                'grantable' => isset($perm['grantable']) ? (bool) $perm['grantable'] : false,
             ];
+        }, $permissions)));
+
+        // Clear all existing role assignments (tenant + global) to avoid stale rows.
+        AssignedPermission::where('assignee_type', 'role')
+            ->where('assignee_id', $role->id)
+            ->delete();
+
+        foreach ($payload as $item) {
+            AbacPermissions::attachPermissionToRole(
+                $role->id,
+                $item['id'],
+                $item['access'] ?? null,
+                (bool) ($item['grantable'] ?? false)
+            );
         }
 
-        $role->permissions()->sync($syncPayload);
+        // Required because the bulk delete above bypasses model observers.
+        // Also covers the "no permissions selected" case where no create events fire.
+        AbacPermissions::invalidateCache();
     }
 }

@@ -25,6 +25,7 @@
                     <th class="h-12 px-4 align-middle font-medium text-muted-foreground">Plan</th>
                     <th class="h-12 px-4 align-middle font-medium text-muted-foreground">Phone</th>
                     <th class="h-12 px-4 align-middle font-medium text-muted-foreground">Location</th>
+                    <th class="h-12 px-4 align-middle font-medium text-muted-foreground">Accounting</th>
                     <th class="h-12 px-4 align-middle font-medium text-muted-foreground">Users</th>
                     <th class="h-12 px-4 align-middle font-medium text-muted-foreground text-right">Actions</th>
                   </tr>
@@ -49,6 +50,11 @@
                       <div class="max-w-xs truncate">{{ account.metadata?.address || '-' }}</div>
                     </td>
                     <td class="p-4 align-middle">
+                      <Badge :variant="account.metadata?.accounting_enabled ? 'default' : 'secondary'">
+                        {{ account.metadata?.accounting_enabled ? 'Enabled' : 'Disabled' }}
+                      </Badge>
+                    </td>
+                    <td class="p-4 align-middle">
                       <Button variant="outline" size="sm" class="h-8 gap-1" @click="openUserModal(account)">
                         <i class="fas fa-users w-3.5 h-3.5"></i>
                         <span>{{ account.users_count || 0 }}</span>
@@ -61,7 +67,7 @@
                     </td>
                   </tr>
                   <tr v-if="!accounts.data || accounts.data.length === 0">
-                    <td colspan="6" class="p-4 text-center text-muted-foreground">No pharmacy accounts found.</td>
+                    <td colspan="7" class="p-4 text-center text-muted-foreground">No pharmacy accounts found.</td>
                   </tr>
                 </tbody>
               </table>
@@ -157,6 +163,16 @@
               class="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
               placeholder="Street address, City, State, ZIP"></textarea>
             <p v-if="errors['metadata.address']" class="text-destructive text-xs">{{ errors['metadata.address'] }}</p>
+          </div>
+
+          <div class="md:col-span-2 flex items-center justify-between rounded-md border p-3">
+            <div>
+              <Label class="text-sm font-medium">Enable Accounting Module</Label>
+              <p class="text-xs text-muted-foreground mt-1">
+                Enable before accounting pages become available for this account.
+              </p>
+            </div>
+            <input v-model="form.metadata.accounting_enabled" type="checkbox" class="h-4 w-4" />
           </div>
 
           <!-- Permissions -->
@@ -306,7 +322,8 @@ const form = ref({
     business_hours: '',
     contact_email: '',
     address: '',
-    license: ''
+    license: '',
+    accounting_enabled: false,
   }
 });
 
@@ -358,7 +375,8 @@ const openModal = (account = null) => {
       business_hours: account.metadata?.business_hours || '',
       contact_email: account.metadata?.contact_email || '',
       address: account.metadata?.address || '',
-      license: account.metadata?.license || ''
+      license: account.metadata?.license || '',
+      accounting_enabled: Boolean(account.metadata?.accounting_enabled),
     };
     // Pre-populate permissions from eager-loaded assignedPermissions relation.
     // Shape from API: [{ permission_id, access, permission: { id, name, type } }]
@@ -390,7 +408,8 @@ const openModal = (account = null) => {
         business_hours: '',
         contact_email: '',
         address: '',
-        license: ''
+        license: '',
+        accounting_enabled: false,
       }
     };
   }

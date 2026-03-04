@@ -6,9 +6,12 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\Account;
 use AbacPermissions\Models\AssignedPermission;
+use AbacPermissions\Facades\AbacPermissions;
 use App\Models\User;
+use App\Models\SystemSetting;
 use Inertia\Inertia;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\DB;
 
 class AccountController extends Controller
 {
@@ -34,6 +37,7 @@ class AccountController extends Controller
         $accounts = $query
             ->with(['assignedPermissions.permission'])
             ->paginate(15);
+        $this->injectAccountingEnabledMetadata($accounts->getCollection());
 
         if ($request->wantsJson() && !$request->header('X-Inertia')) {
             return response()->json($accounts);
@@ -60,6 +64,7 @@ class AccountController extends Controller
             'metadata.contact_email'  => 'nullable|email|max:255',
             'metadata.address'        => 'nullable|string|max:1000',
             'metadata.license'        => 'nullable|string|max:255',
+            'metadata.accounting_enabled' => 'nullable|boolean',
             'permissions'             => 'nullable|array',
             'permissions.*.id'        => 'required|exists:permissions,id',
             'permissions.*.access'    => 'nullable|array',
@@ -73,11 +78,19 @@ class AccountController extends Controller
 
         $account = Account::create($data);
 
+        $accountingEnabled = (bool) ($data['metadata']['accounting_enabled'] ?? false);
+        SystemSetting::seedTenantDefaults((string) $account->id, [
+            'accounting_enabled' => $accountingEnabled,
+        ]);
+
         if (!empty($permissions)) {
             $this->syncPermissions($account, $permissions);
         }
 
-        return response()->json($account->load('users'), 201);
+        $account = $account->load('users');
+        $this->injectAccountingEnabledMetadata(collect([$account]));
+
+        return response()->json($account, 201);
     }
 
     /**
@@ -88,6 +101,7 @@ class AccountController extends Controller
         $account = Account::withCount('users')
             ->with(['assignedPermissions.permission'])
             ->findOrFail($id);
+        $this->injectAccountingEnabledMetadata(collect([$account]));
 
         return response()->json($account);
     }
@@ -110,6 +124,7 @@ class AccountController extends Controller
             'metadata.contact_email'  => 'nullable|email|max:255',
             'metadata.address'        => 'nullable|string|max:1000',
             'metadata.license'        => 'nullable|string|max:255',
+            'metadata.accounting_enabled' => 'nullable|boolean',
             'permissions'             => 'nullable|array',
             'permissions.*.id'        => 'required|exists:permissions,id',
             'permissions.*.access'    => 'nullable|array',
@@ -122,12 +137,21 @@ class AccountController extends Controller
 
         $account->update($data);
 
+        if (array_key_exists('metadata', $data) && array_key_exists('accounting_enabled', $data['metadata'] ?? [])) {
+            SystemSetting::seedTenantDefaults((string) $account->id, [
+                'accounting_enabled' => (bool) $data['metadata']['accounting_enabled'],
+            ]);
+        }
+
         // Sync permissions only if the key was present in the request
         if ($hasPermissions) {
             $this->syncPermissions($account, $permissions ?? []);
         }
 
-        return response()->json($account->load(['users', 'assignedPermissions.permission']));
+        $account = $account->load(['users', 'assignedPermissions.permission']);
+        $this->injectAccountingEnabledMetadata(collect([$account]));
+
+        return response()->json($account);
     }
 
     /**
@@ -249,6 +273,29 @@ class AccountController extends Controller
 
         if (!empty($records)) {
             AssignedPermission::insert($records);
+        }
+
+        // Bulk query mutations bypass model observers; invalidate explicitly.
+        AbacPermissions::invalidateCache();
+    }
+
+    protected function injectAccountingEnabledMetadata($accounts): void
+    {
+        if (!$accounts || $accounts->isEmpty()) {
+            return;
+        }
+
+        $accountIds = $accounts->pluck('id')->all();
+        $flags = DB::table('system_settings')
+            ->whereIn('account_id', $accountIds)
+            ->where('key', 'accounting_enabled')
+            ->pluck('value', 'account_id');
+
+        foreach ($accounts as $account) {
+            $metadata = is_array($account->metadata ?? null) ? $account->metadata : (array) ($account->metadata ?? []);
+            $raw = $flags[$account->id] ?? ($metadata['accounting_enabled'] ?? false);
+            $metadata['accounting_enabled'] = in_array($raw, [true, 1, '1', 'true'], true);
+            $account->metadata = $metadata;
         }
     }
 }

@@ -4,6 +4,8 @@ namespace App\Services;
 
 use App\Services\EventLedgerService;
 use App\Services\TaxService;
+use App\Services\AccountingService;
+use App\Models\SystemSetting;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -11,11 +13,13 @@ class SaleService
 {
     protected $ledger;
     protected $tax;
+    protected $accounting;
 
-    public function __construct(EventLedgerService $ledger, TaxService $tax)
+    public function __construct(EventLedgerService $ledger, TaxService $tax, AccountingService $accounting)
     {
         $this->ledger = $ledger;
         $this->tax = $tax;
+        $this->accounting = $accounting;
     }
 
     /**
@@ -27,6 +31,8 @@ class SaleService
         try {
             $result = DB::transaction(function () use ($saleData) {
                 $saleId = $saleData['id'] ?? Str::ulid()->toString();
+                $accountId = app(\AbacPermissions\Tenancy\TenantContext::class)->getAccountId();
+                $customer = $this->resolveOrCreateCustomer($saleData, $accountId);
 
                 // 1. Create Sale Header (Read Model)
                 // account_id is automatically assigned via UsesTenant trait
@@ -34,10 +40,6 @@ class SaleService
                     'id' => $saleId,
                     // 'account_id' => handled automatically
                     'user_id' => $saleData['user_id'] ?? null,
-                    'customer_name' => $saleData['customer_name'] ?? null,
-                    'customer_dob' => $saleData['customer_dob'] ?? null,
-                    'customer_phone' => $saleData['customer_phone'] ?? null,
-                    'customer_email' => $saleData['customer_email'] ?? null,
                     // Fix: Map 'subtotal' from request to 'subtotal_amount' in DB
                     'subtotal_amount' => $saleData['subtotal_amount'] ?? $saleData['subtotal'] ?? 0,
                     'tax_amount' => $saleData['tax_amount'] ?? 0,
@@ -48,6 +50,26 @@ class SaleService
                     'change_amount' => $saleData['change_amount'] ?? null,
                     'finalized_at' => now(),
                 ]);
+
+                if ($customer) {
+                    $existingLink = DB::table('customer_sales')->where('sale_id', $saleId)->first();
+                    if ($existingLink) {
+                        DB::table('customer_sales')->where('sale_id', $saleId)->update([
+                            'account_id' => $accountId,
+                            'customer_id' => $customer->id,
+                            'updated_at' => now(),
+                        ]);
+                    } else {
+                        DB::table('customer_sales')->insert([
+                            'id' => (string) Str::ulid(),
+                            'account_id' => $accountId,
+                            'customer_id' => $customer->id,
+                            'sale_id' => $saleId,
+                            'created_at' => now(),
+                            'updated_at' => now(),
+                        ]);
+                    }
+                }
 
                 // 2. OPTIMIZED: Batch insert sale items (1 query instead of N)
                 $saleItems = collect($saleData['items'])->map(function ($item) use ($saleId) {
@@ -84,7 +106,7 @@ class SaleService
 
                 // 4. Prepare event data to emit AFTER transaction
                 $eventData = [
-                    'account_id' => app(\AbacPermissions\Tenancy\TenantContext::class)->getAccountId(),
+                    'account_id' => $accountId,
                     'device_id' => $saleData['device_id'] ?? (\App\Models\Device::value('device_id') ?? 'unknown'),
                     'actor_user_id' => $saleData['user_id'] ?? null,
                     'event_type' => 'SALE_FINALIZED',
@@ -97,6 +119,10 @@ class SaleService
                         'finalized_at' => now()->toIso8601String(),
                     ]
                 ];
+
+                if ((bool) SystemSetting::getValue('accounting_enabled', false)) {
+                    $this->accounting->recordPosSale($sale, $accountId, $saleData['user_id'] ?? null);
+                }
 
                 return (object) [
                     'sale_id' => $saleId,
@@ -121,13 +147,100 @@ class SaleService
         }
     }
 
+    protected function resolveOrCreateCustomer(array $saleData, string|int|null $accountId): ?\App\Models\Customer
+    {
+        $customerId = isset($saleData['customer_id']) ? trim((string) $saleData['customer_id']) : null;
+        $name = isset($saleData['customer_name']) ? trim((string) $saleData['customer_name']) : null;
+        $phone = isset($saleData['customer_phone']) ? trim((string) $saleData['customer_phone']) : null;
+        $email = isset($saleData['customer_email']) ? strtolower(trim((string) $saleData['customer_email'])) : null;
+        $dob = !empty($saleData['customer_dob']) ? $saleData['customer_dob'] : null;
+
+        $hasCustomerInfo = !empty($customerId) || !empty($name) || !empty($phone) || !empty($email) || !empty($dob);
+        if (!$hasCustomerInfo) {
+            return null;
+        }
+
+        if (!empty($customerId)) {
+            $existingById = \App\Models\Customer::query()
+                ->where('account_id', $accountId)
+                ->where('id', $customerId)
+                ->first();
+
+            if ($existingById) {
+                $existingById->fill([
+                    'name' => $name ?: $existingById->name,
+                    'phone' => $phone ?: $existingById->phone,
+                    'email' => $email ?: $existingById->email,
+                    'dob' => $dob ?: $existingById->dob,
+                ]);
+                $existingById->save();
+
+                return $existingById;
+            }
+        }
+
+        $query = \App\Models\Customer::query()->where('account_id', $accountId);
+
+        if (!empty($phone)) {
+            $query->where('phone', $phone);
+        } elseif (!empty($email)) {
+            $query->where('email', $email);
+        } else {
+            $query->where('name', $name);
+            if (!empty($dob)) {
+                $query->whereDate('dob', $dob);
+            }
+        }
+
+        $customer = $query->first();
+
+        if ($customer) {
+            $customer->fill([
+                'name' => $name ?: $customer->name,
+                'phone' => $phone ?: $customer->phone,
+                'email' => $email ?: $customer->email,
+                'dob' => $dob ?: $customer->dob,
+            ]);
+            $customer->save();
+
+            return $customer;
+        }
+
+        return \App\Models\Customer::create([
+            'id' => \Illuminate\Support\Str::ulid()->toString(),
+            'account_id' => $accountId,
+            'name' => $name,
+            'phone' => $phone,
+            'email' => $email,
+            'dob' => $dob,
+        ]);
+    }
+
     /**
      * Get a single sale by ID from the Read Model.
      */
     public function getSale(string $saleId)
     {
         // Use Eloquent to check TenantScope automatically and load items with drug info and user
-        return \App\Models\Sale::with(['items', 'items.drug', 'user'])->find($saleId);
+        $sale = \App\Models\Sale::with(['items.inventory', 'items.drug', 'user', 'customers'])->find($saleId);
+
+        return $sale ? $this->decorateSaleProfit($sale) : null;
+    }
+
+    /**
+     * Get recent sales (non-paginated) for display in POS.
+     */
+    public function getRecentSales(int $limit = 10)
+    {
+        $sales = \App\Models\Sale::query()
+            ->with('customers')
+            ->with(['items.inventory'])
+            ->withExists('returns')
+            ->orderBy('finalized_at', 'desc')
+            ->limit($limit)
+            ->get();
+
+        return $sales->map(fn ($sale) => $this->decorateSaleProfit($sale));
     }
 
     /**
@@ -135,7 +248,10 @@ class SaleService
      */
     public function getAllSales(int $perPage = 15, array $filters = [], string $sortBy = 'finalized_at', string $sortDirection = 'desc')
     {
-        $query = \App\Models\Sale::query()->withExists('returns');
+        $query = \App\Models\Sale::query()
+            ->with('customers')
+            ->with(['items.inventory'])
+            ->withExists('returns');
 
         // Apply date range filters
         if (!empty($filters['start_date'])) {
@@ -158,6 +274,34 @@ class SaleService
         $sortField = in_array($sortBy, $allowedSortFields) ? $sortBy : 'finalized_at';
         $sortDir = in_array(strtolower($sortDirection), ['asc', 'desc']) ? $sortDirection : 'desc';
 
-        return $query->orderBy($sortField, $sortDir)->paginate($perPage);
+        $paginated = $query->orderBy($sortField, $sortDir)->paginate($perPage);
+        $paginated->setCollection(
+            $paginated->getCollection()->map(fn ($sale) => $this->decorateSaleProfit($sale))
+        );
+
+        return $paginated;
+    }
+
+    protected function decorateSaleProfit(\App\Models\Sale $sale): \App\Models\Sale
+    {
+        $totalCost = 0.0;
+        foreach ($sale->items as $item) {
+            $costPrice = (float) ($item->inventory->cost_price ?? 0);
+            $totalCost += $costPrice * (float) $item->quantity;
+        }
+
+        $netSales = (float) ($sale->subtotal_amount ?? 0);
+        if ($netSales <= 0) {
+            $netSales = max(0, (float) $sale->total_amount - (float) $sale->tax_amount);
+        }
+
+        $grossProfit = round($netSales - $totalCost, 2);
+        $margin = $netSales > 0 ? round(($grossProfit / $netSales) * 100, 2) : 0.0;
+
+        $sale->setAttribute('total_cost', round($totalCost, 2));
+        $sale->setAttribute('gross_profit', $grossProfit);
+        $sale->setAttribute('gross_margin', $margin);
+
+        return $sale;
     }
 }

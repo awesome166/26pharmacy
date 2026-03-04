@@ -240,10 +240,6 @@ class PlatformSeeder extends Seeder
                     'id' => $saleId,
                     'account_id' => $accountId,
                     'user_id' => $faker->randomElement([$pharmacistId, $customerServiceId]),
-                    'customer_name' => $faker->name,
-                    // 'customer_dob' => $faker->optional(0.6)->dateTimeBetween('-80 years', '-18 years')->format('Y-m-d'),
-                    'customer_phone' => $faker->optional(0.8)->phoneNumber,
-                    'customer_email' => $faker->optional(0.5)->email,
                     'subtotal_amount' => $subtotal,
                     'tax_amount' => $tax,
                     'total_amount' => $total,
@@ -257,6 +253,44 @@ class PlatformSeeder extends Seeder
                     'created_at' => $faker->dateTimeBetween('-7 days', 'now'),
                     'updated_at' => now(),
                 ]);
+
+                $customerName = $faker->name;
+                $customerPhone = $faker->optional(0.8)->phoneNumber;
+                $customerEmail = $faker->optional(0.5)->email;
+                $customerDob = $faker->optional(0.6)->dateTimeBetween('-80 years', '-18 years')?->format('Y-m-d');
+
+                if ($customerName || $customerPhone || $customerEmail || $customerDob) {
+                    $customer = DB::table('customers')
+                        ->where('account_id', $accountId)
+                        ->when($customerPhone, fn ($q) => $q->where('phone', $customerPhone))
+                        ->when(!$customerPhone && $customerEmail, fn ($q) => $q->where('email', $customerEmail))
+                        ->when(!$customerPhone && !$customerEmail, fn ($q) => $q->where('name', $customerName))
+                        ->first();
+
+                    $customerId = $customer?->id ?? (string) Str::ulid();
+
+                    if (!$customer) {
+                        DB::table('customers')->insert([
+                            'id' => $customerId,
+                            'account_id' => $accountId,
+                            'name' => $customerName,
+                            'dob' => $customerDob,
+                            'phone' => $customerPhone,
+                            'email' => $customerEmail,
+                            'created_at' => now(),
+                            'updated_at' => now(),
+                        ]);
+                    }
+
+                    DB::table('customer_sales')->insert([
+                        'id' => (string) Str::ulid(),
+                        'account_id' => $accountId,
+                        'customer_id' => $customerId,
+                        'sale_id' => $saleId,
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+                }
                 $saleIds[] = $saleId;
             }
         }

@@ -10,6 +10,9 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use App\Jobs\AuditEventJob;
 use Inertia\Inertia;
+use App\Models\Inventory;
+use Illuminate\Support\Facades\DB;
+use App\Services\StoreInventoryService;
 
 class InventoryController extends Controller
 {
@@ -24,7 +27,7 @@ class InventoryController extends Controller
 
     public function search(Request $request)
     {
-        $query = $request->query('query');
+        $query = (string) $request->query('query', '');
         $results = $this->inventoryService->searchDrugs($query);
 
         if ($request->wantsJson()) {
@@ -39,22 +42,74 @@ class InventoryController extends Controller
      */
     public function adjustStock(AdjustStockRequest $request)
     {
+        $inventory = Inventory::query()->with('batch')->findOrFail($request->inventory_id);
+        $accountId = app(\AbacPermissions\Tenancy\TenantContext::class)->getAccountId();
+        abort_if((string) $inventory->account_id !== (string) $accountId, 403);
+
+        if ($request->boolean('remove_from_inventory')) {
+            $inventory->update([
+                'is_active' => false,
+                'quantity_on_hand' => 0,
+            ]);
+
+            if ($request->wantsJson()) {
+                return response()->json(['message' => 'Drug removed from inventory.']);
+            }
+
+            return redirect()->back()->with('success', 'Drug removed from inventory.');
+        }
+
+        $payload = [];
+        if ($request->filled('location')) {
+            $payload['location'] = $request->string('location')->toString();
+        }
+        if ($request->filled('drug_id')) {
+            $payload['drug_id'] = $request->string('drug_id')->toString();
+        }
+        if ($request->filled('selling_price')) {
+            $payload['selling_price'] = (float) $request->selling_price;
+        }
+        if ($request->filled('cost_price')) {
+            $payload['cost_price'] = (float) $request->cost_price;
+        }
+
+        $quantityChange = (int) ($request->quantity_change ?? 0);
+        if ($quantityChange !== 0) {
+            $newQty = (int) $inventory->quantity_on_hand + $quantityChange;
+            if ($newQty < 0) {
+                return back()->withErrors(['quantity_change' => 'Adjustment cannot result in negative stock.']);
+            }
+            $payload['quantity_on_hand'] = $newQty;
+        }
+
+        if (empty($payload) && $quantityChange === 0) {
+            return back()->withErrors(['adjustment' => 'No changes detected. Update at least one field.']);
+        }
+
+        if (!empty($payload)) {
+            $inventory->update($payload);
+        }
+
         // Emit formal event to ledger
         $event = $this->ledger->emitEvent([
-            'account_id' => app(\AbacPermissions\Tenancy\TenantContext::class)->getAccountId(),
-            'branch_id' => $request->branch_id,
+            'account_id' => $accountId,
             'device_id' => $request->header('X-Device-Id'),
             'event_type' => 'STOCK_ADJUSTED',
             'event_payload' => [
-                'batch_id' => $request->batch_id,
-                'change' => $request->quantity_change,
-                'reason' => $request->reason
+                'inventory_id' => $inventory->id,
+                'batch_id' => $inventory->batch_id,
+                'change' => $quantityChange,
+                'reason' => $request->reason,
+                'location' => $payload['location'] ?? $inventory->location,
+                'drug_id' => $payload['drug_id'] ?? $inventory->drug_id,
+                'selling_price' => $payload['selling_price'] ?? $inventory->selling_price,
+                'cost_price' => $payload['cost_price'] ?? $inventory->cost_price,
             ]
         ]);
 
         AuditEventJob::dispatch([
             'entity_type' => 'inventory',
-            'entity_id' => $request->batch_id,
+            'entity_id' => $inventory->id,
             'action' => 'STOCK_ADJUSTED',
             'metadata' => ['event_id' => $event->event_id]
         ]);
@@ -97,6 +152,7 @@ class InventoryController extends Controller
                     'drug_name' => $item->drug?->name ?? 'Unknown Drug',
                     'strength' => $item->drug?->strength ?? '',
                     'lot_number' => $item->batch?->lot_number ?? null,
+                    'batch_number' => $item->batch?->lot_number ?? null,
                     'expiry_date' => $item->batch?->expiry_date ?? null,
                     'quantity_on_hand' => $item->quantity_on_hand,
                     'selling_price' => $item->selling_price,
@@ -119,17 +175,53 @@ class InventoryController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'account_id' => 'required|string|exists:accounts,account_id',
-            'branch_id' => 'required|string|exists:branches,branch_id',
-            'drug_id' => 'required|string|exists:drugs,drug_id',
-            'batch_id' => 'required|string|exists:batches,batch_id',
-            'selling_price' => 'required|numeric',
+            'drug_id' => 'required|ulid|exists:drugs,id',
+            'batch_id' => 'required|ulid|exists:batches,id',
+            'selling_price' => 'required|numeric|min:0',
+            'cost_price' => 'nullable|numeric|min:0',
+            'location' => 'nullable|string|max:255',
             'quantity_on_hand' => 'required|integer|min:1',
         ]);
 
-        $inventory = \App\Models\Inventory::create(array_merge($validated, [
-            'inventory_id' => \Illuminate\Support\Str::ulid()
-        ]));
+        $accountId = (string) app(\AbacPermissions\Tenancy\TenantContext::class)->getAccountId();
+        abort_if(!$accountId, 422, 'Select an account before adding stock.');
+
+        $inventory = DB::transaction(function () use ($validated, $accountId) {
+            $location = $validated['location'] ?? 'Shelf A';
+
+            $existing = Inventory::query()
+                ->where('account_id', $accountId)
+                ->where('drug_id', $validated['drug_id'])
+                ->where('batch_id', $validated['batch_id'])
+                ->where('location', $location)
+                ->first();
+
+            if ($existing) {
+                $existing->update([
+                    'quantity_on_hand' => (int) $existing->quantity_on_hand + (int) $validated['quantity_on_hand'],
+                    'selling_price' => $validated['selling_price'],
+                    'cost_price' => $validated['cost_price'] ?? $validated['selling_price'],
+                    'is_active' => true,
+                ]);
+
+                return $existing->fresh();
+            }
+
+            return Inventory::create([
+                'id' => (string) \Illuminate\Support\Str::ulid(),
+                'account_id' => $accountId,
+                'drug_id' => $validated['drug_id'],
+                'batch_id' => $validated['batch_id'],
+                'selling_price' => $validated['selling_price'],
+                'cost_price' => $validated['cost_price'] ?? $validated['selling_price'],
+                'quantity_on_hand' => $validated['quantity_on_hand'],
+                'reorder_level' => 10,
+                'location' => $location,
+                'is_active' => true,
+            ]);
+        });
+
+        app(StoreInventoryService::class)->invalidateCache($accountId);
 
         if ($request->wantsJson()) {
             return response()->json($inventory, 201);

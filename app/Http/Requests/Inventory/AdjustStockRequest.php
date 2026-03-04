@@ -14,10 +14,14 @@ class AdjustStockRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'branch_id' => 'required|string|exists:branches,branch_id',
-            'batch_id' => 'required|ulid|exists:batches,batch_id',
-            'quantity_change' => 'required|integer',
+            'inventory_id' => 'required|ulid|exists:inventory,id',
+            'quantity_change' => 'nullable|integer',
             'reason' => 'required|string|max:255',
+            'location' => 'nullable|string|max:255',
+            'drug_id' => 'nullable|ulid|exists:drugs,id',
+            'selling_price' => 'nullable|numeric|min:0',
+            'cost_price' => 'nullable|numeric|min:0',
+            'remove_from_inventory' => 'nullable|boolean',
         ];
     }
 }

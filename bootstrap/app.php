@@ -16,14 +16,14 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        $middleware->encryptCookies(except: ['appearance', 'sidebar_state']);
+        $middleware->encryptCookies(except: ['appearance', 'sidebar_state', 'current_account_id']);
 
         $middleware->web(append: [
             HandleAppearance::class,
-            HandleInertiaRequests::class,
-            AddLinkHeadersForPreloadedAssets::class,
             \App\Http\Middleware\RestoreAccountFromCookie::class, // Bridge persistence
             \AbacPermissions\Http\Middleware\DetectAbacTenant::class,
+            HandleInertiaRequests::class,
+            AddLinkHeadersForPreloadedAssets::class,
             // \AbacPermissions\Http\Middleware\AppendPermissions::class,
 
         ]);
@@ -38,6 +38,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             // 'permission' => \App\AccessControl\Middleware\EnsurePermission::class,
+            'accounting.enabled' => \App\Http\Middleware\EnsureAccountingEnabled::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

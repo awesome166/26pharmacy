@@ -84,9 +84,12 @@
                         </span>
                       </td>
                       <td class="p-4 align-middle text-right">
-                        <div class="opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div class="opacity-0 group-hover:opacity-100 transition-opacity flex justify-end gap-1">
                           <Button variant="ghost" size="icon" class="h-8 w-8" @click="openEditModal(account)">
                             <i class="fas fa-pencil-alt h-4 w-4"></i>
+                          </Button>
+                          <Button variant="ghost" size="icon" class="h-8 w-8 text-destructive" @click="deleteAccount(account)">
+                            <i class="fas fa-trash h-4 w-4"></i>
                           </Button>
                         </div>
                       </td>
@@ -190,11 +193,16 @@ const closeModal = () => {
   selectedAccount.value = null;
 };
 
+const deleteAccount = (account) => {
+  if (!confirm(`Delete account ${account.code} - ${account.name}?`)) return;
+  router.delete(route('accounting.accounts.destroy', account.id), { preserveScroll: true });
+};
+
 const refresh = () => {
   router.reload();
 };
 
 const formatCurrency = (value) => {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'GHS' }).format(value);
 };
 </script>

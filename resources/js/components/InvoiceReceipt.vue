@@ -52,6 +52,17 @@ interface Sale {
     name: string;
     [key: string]: any;
   };
+  customer_name?: string;
+  customer_phone?: string;
+  customer_email?: string;
+  customer_dob?: string;
+  customer?: {
+    name?: string | null;
+    phone?: string | null;
+    email?: string | null;
+    dob?: string | null;
+    [key: string]: any;
+  };
   [key: string]: any;
 }
 
@@ -103,6 +114,10 @@ const normalizedSale = computed(() => {
     totalReturnedAmount: Number(props.sale.totalReturnedAmount ?? props.sale.total_returned_amount ?? 0),
     date: props.sale.date ?? (props.sale.finalized_at ? new Date(props.sale.finalized_at).toLocaleString() : new Date().toLocaleString()),
     servedBy,
+    customerName: props.sale.customer_name ?? props.sale.customer?.name ?? null,
+    customerPhone: props.sale.customer_phone ?? props.sale.customer?.phone ?? null,
+    customerEmail: props.sale.customer_email ?? props.sale.customer?.email ?? null,
+    customerDob: props.sale.customer_dob ?? props.sale.customer?.dob ?? null,
   };
 });
 
@@ -194,6 +209,14 @@ const printReceipt = () => {
         <p>Receipt #${normalizedSale.value.id}</p>
         <p>${normalizedSale.value.date}</p>
         ${normalizedSale.value.servedBy ? `<p style="font-size: 0.85em; margin-top: 5px;">Served by: ${normalizedSale.value.servedBy}</p>` : ''}
+        ${normalizedSale.value.customerName || normalizedSale.value.customerPhone || normalizedSale.value.customerEmail || normalizedSale.value.customerDob ? `
+          <div style="font-size: 0.85em; margin-top: 6px;">
+            ${normalizedSale.value.customerName ? `<p style="margin: 2px 0;">Customer: ${normalizedSale.value.customerName}</p>` : ''}
+            ${normalizedSale.value.customerPhone ? `<p style="margin: 2px 0;">Phone: ${normalizedSale.value.customerPhone}</p>` : ''}
+            ${normalizedSale.value.customerEmail ? `<p style="margin: 2px 0;">Email: ${normalizedSale.value.customerEmail}</p>` : ''}
+            ${normalizedSale.value.customerDob ? `<p style="margin: 2px 0;">DOB: ${new Date(normalizedSale.value.customerDob).toLocaleDateString()}</p>` : ''}
+          </div>
+        ` : ''}
       </div>
 
       <div class="items">
@@ -204,12 +227,6 @@ const printReceipt = () => {
               <span>${item.quantity} x ${formatCurrency(item.price)}</span>
               <span>${formatCurrency(item.total)}</span>
             </div>
-            ${item.return_quantity > 0 ? `
-                <div class="row" style="color: #ef4444; font-size: 0.85em; margin-top: -2px;">
-                    <span>Returned:</span>
-                    <span>-${item.return_quantity}</span>
-                </div>
-            ` : ''}
             ${item.return_quantity > 0 ? `
                 <div class="row" style="color: #ef4444; font-size: 0.85em; margin-top: -2px;">
                     <span>Returned:</span>
@@ -310,6 +327,13 @@ const printReceipt = () => {
           <p v-if="normalizedSale?.servedBy" class="text-xs text-muted-foreground mt-1">
             Served by: {{ normalizedSale.servedBy }}
           </p>
+          <div v-if="normalizedSale?.customerName || normalizedSale?.customerPhone || normalizedSale?.customerEmail"
+            class="text-xs text-muted-foreground mt-2">
+            <p v-if="normalizedSale?.customerName">Customer: {{ normalizedSale.customerName }}</p>
+            <p v-if="normalizedSale?.customerPhone">Phone: {{ normalizedSale.customerPhone }}</p>
+            <p v-if="normalizedSale?.customerEmail">Email: {{ normalizedSale.customerEmail }}</p>
+            <p v-if="normalizedSale?.customerDob">DOB: {{ new Date(normalizedSale.customerDob).toLocaleDateString() }}</p>
+          </div>
         </div>
 
         <!-- Items -->

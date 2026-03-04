@@ -24,11 +24,36 @@ class AppServiceProvider extends ServiceProvider
         \Illuminate\Support\Facades\Vite::prefetch(concurrency: 3);
 
         \Illuminate\Support\Facades\Gate::before(function ($user, $ability) {
+            if (method_exists($user, 'isZeus') && $user->isZeus()) {
+                return true;
+            }
+
             $permissions = $user->getAllPermissions();
+            $legacyFallbacks = [
+                'accounting.dashboard.view' => 'financial.view',
+                'accounting.reports.view' => 'financial.view',
+                'accounting.accounts.manage' => 'financial.manage',
+                'accounting.journal.manage' => 'financial.manage',
+                'accounting.cash.manage' => 'financial.manage',
+                'accounting.close.manage' => 'financial.manage',
+            ];
 
             // 1. Check exact match
             if (in_array($ability, $permissions)) {
                 return true;
+            }
+
+            if (isset($legacyFallbacks[$ability])) {
+                $legacy = $legacyFallbacks[$ability];
+                if (in_array($legacy, $permissions)) {
+                    return true;
+                }
+
+                foreach ($permissions as $perm) {
+                    if (str_starts_with($perm, $legacy . ':')) {
+                        return true;
+                    }
+                }
             }
 
             // 2. Check wildcard matches (if checking "users.manage", it passes if "users.manage:read" exists)

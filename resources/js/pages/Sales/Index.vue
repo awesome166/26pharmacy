@@ -85,6 +85,9 @@ const viewReceipt = (sale: any) => {
                     change: saleData.change_amount,
                     date: new Date(saleData.finalized_at || saleData.created_at).toLocaleString(),
                     user: saleData.user, // Include user data for "Served By"
+                    customer_name: saleData.customer_name,
+                    customer_phone: saleData.customer_phone,
+                    customer_email: saleData.customer_email,
                 };
                 showReceipt.value = true;
             })
@@ -225,12 +228,24 @@ const hasActiveFilters = () => {
                                             <ArrowUpDown class="h-4 w-4" v-if="sortBy === 'payment_type'" />
                                         </div>
                                     </th>
+                                    <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
+                                        Customer
+                                    </th>
                                     <th class="h-12 px-4 text-right align-middle font-medium text-muted-foreground cursor-pointer hover:text-foreground"
                                         @click="toggleSort('total_amount')">
                                         <div class="flex items-center justify-end gap-2">
                                             Total
                                             <ArrowUpDown class="h-4 w-4" v-if="sortBy === 'total_amount'" />
                                         </div>
+                                    </th>
+                                    <th class="h-12 px-4 text-right align-middle font-medium text-muted-foreground">
+                                        Cost
+                                    </th>
+                                    <th class="h-12 px-4 text-right align-middle font-medium text-muted-foreground">
+                                        Profit
+                                    </th>
+                                    <th class="h-12 px-4 text-right align-middle font-medium text-muted-foreground">
+                                        Margin %
                                     </th>
                                     <th class="h-12 px-4 text-right align-middle font-medium text-muted-foreground">
                                         Actions</th>
@@ -248,8 +263,25 @@ const hasActiveFilters = () => {
                                             Returned
                                         </span>
                                     </td>
+                                    <td class="p-4 align-middle">
+                                        <div v-if="sale.customer_name || sale.customer_phone || sale.customer_email">
+                                            <div class="font-medium">{{ sale.customer_name || 'Customer' }}</div>
+                                            <div v-if="sale.customer_phone" class="text-xs text-muted-foreground">
+                                                {{ sale.customer_phone }}
+                                            </div>
+                                            <div v-if="sale.customer_email" class="text-xs text-muted-foreground">
+                                                {{ sale.customer_email }}
+                                            </div>
+                                        </div>
+                                        <span v-else class="text-xs text-muted-foreground">Walk-in</span>
+                                    </td>
                                     <td class="p-4 align-middle text-right font-semibold">{{
                                         formatCurrency(sale.total_amount) }}</td>
+                                    <td class="p-4 align-middle text-right">{{ formatCurrency(sale.total_cost) }}</td>
+                                    <td class="p-4 align-middle text-right" :class="Number(sale.gross_profit) < 0 ? 'text-red-600' : 'text-emerald-600'">
+                                        {{ formatCurrency(sale.gross_profit) }}
+                                    </td>
+                                    <td class="p-4 align-middle text-right">{{ Number(sale.gross_margin || 0).toFixed(2) }}%</td>
                                     <td class="p-4 align-middle text-right">
                                         <Button variant="outline" size="sm" @click="viewReceipt(sale)">
                                             View Receipt
@@ -257,7 +289,7 @@ const hasActiveFilters = () => {
                                     </td>
                                 </tr>
                                 <tr v-if="sales.data.length === 0">
-                                    <td colspan="5" class="p-8 text-center text-muted-foreground">
+                                    <td colspan="9" class="p-8 text-center text-muted-foreground">
                                         No sales found.
                                     </td>
                                 </tr>

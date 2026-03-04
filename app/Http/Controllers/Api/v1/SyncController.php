@@ -29,7 +29,7 @@ class SyncController extends Controller
 
         if ($request->wantsJson()) {
             return response()->json([
-                'message' => 'Sync push initiated'
+                // 'message' => 'Sync push initiated'
             ], 200);
         }
 
@@ -46,7 +46,7 @@ class SyncController extends Controller
 
         if ($request->wantsJson()) {
             return response()->json([
-                'message' => 'Sync pull initiated'
+                // 'message' => 'Sync pull initiated'
             ], 200);
         }
 

@@ -21,6 +21,13 @@ use App\Http\Controllers\Api\v1\BatchController;
 use App\Http\Controllers\Api\v1\RoleController;
 use App\Http\Controllers\Api\v1\PermissionController;
 use App\Http\Controllers\Api\v1\SystemSettingController;
+use App\Http\Controllers\Api\v1\CustomerController;
+use App\Http\Controllers\Accounting\AccountingDashboardController;
+use App\Http\Controllers\Accounting\ChartOfAccountController;
+use App\Http\Controllers\Accounting\JournalEntryController;
+use App\Http\Controllers\Accounting\AccountingReportController;
+use App\Http\Controllers\Accounting\BookClosingController;
+use App\Http\Controllers\Accounting\CashMovementController;
 
 
 Route::get('/', function () {
@@ -46,6 +53,27 @@ Route::prefix('app')->group(function () {
 Route::middleware(['auth'])->group(function () {
     // Route::get('/select-account', [AccountSelectionController::class, 'index'])->name('auth.select-account');
     // Route::post('/select-account', [AccountSelectionController::class, 'store'])->name('auth.select-account.store');
+});
+
+Route::middleware(['auth', 'accounting.enabled'])->prefix('accounting')->group(function () {
+    Route::get('/', [AccountingDashboardController::class, 'index'])->name('accounting.dashboard')->middleware('can:accounting.dashboard.view');
+
+    Route::get('/accounts', [ChartOfAccountController::class, 'index'])->name('accounting.accounts.index')->middleware('can:accounting.accounts.manage');
+    Route::post('/accounts', [ChartOfAccountController::class, 'store'])->name('accounting.accounts.store')->middleware('can:accounting.accounts.manage');
+    Route::put('/accounts/{account}', [ChartOfAccountController::class, 'update'])->name('accounting.accounts.update')->middleware('can:accounting.accounts.manage');
+    Route::delete('/accounts/{account}', [ChartOfAccountController::class, 'destroy'])->name('accounting.accounts.destroy')->middleware('can:accounting.accounts.manage');
+
+    Route::get('/journal-entries', [JournalEntryController::class, 'index'])->name('accounting.journal-entries.index')->middleware('can:accounting.journal.manage');
+    Route::post('/journal-entries', [JournalEntryController::class, 'store'])->name('accounting.journal-entries.store')->middleware('can:accounting.journal.manage');
+    Route::post('/journal-entries/{entry}/post', [JournalEntryController::class, 'post'])->name('accounting.journal-entries.post')->middleware('can:accounting.journal.manage');
+    Route::post('/journal-entries/{entry}/void', [JournalEntryController::class, 'void'])->name('accounting.journal-entries.void')->middleware('can:accounting.journal.manage');
+    Route::post('/cash-movements', [CashMovementController::class, 'store'])->name('accounting.cash-movements.store')->middleware('can:accounting.cash.manage');
+
+    Route::get('/reports/balance-sheet', [AccountingReportController::class, 'balanceSheet'])->name('accounting.reports.balance-sheet')->middleware('can:accounting.reports.view');
+    Route::get('/reports/income-statement', [AccountingReportController::class, 'incomeStatement'])->name('accounting.reports.income-statement')->middleware('can:accounting.reports.view');
+    Route::get('/reports/trial-balance', [AccountingReportController::class, 'trialBalance'])->name('accounting.reports.trial-balance')->middleware('can:accounting.reports.view');
+
+    Route::post('/close-books', [BookClosingController::class, 'close'])->name('accounting.close-books')->middleware('can:accounting.close.manage');
 });
 
 // --- Pharmacy POS Web/Inertia Routes ---
@@ -76,11 +104,13 @@ Route::middleware(['auth'])->prefix('app')->group(function () {
 
     // Sales & Inventory
     Route::resource('sales', SaleController::class)->only(['index', 'show', 'store'])->middleware('can:sales.process');
+    Route::resource('customers', CustomerController::class)->only(['index', 'update', 'destroy'])->middleware('can:customers.manage');
     Route::get('returns', [\App\Http\Controllers\Api\v1\ReturnController::class, 'index'])->name('returns.index')->middleware('can:returns.manage');
     Route::post('returns', [\App\Http\Controllers\Api\v1\ReturnController::class, 'store'])->name('returns.store')->middleware('can:returns.manage');
     Route::post('returns/{returnItem}/restock', [\App\Http\Controllers\Api\v1\ReturnController::class, 'restock'])->name('returns.restock')->middleware('can:returns.restock');
     Route::patch('sale-items/{saleItem}/dosage', [\App\Http\Controllers\Api\v1\SaleItemController::class, 'updateDosageInstructions'])->name('sale-items.dosage.update')->middleware('can:sales.process');
     Route::get('store', [StoreController::class, 'index'])->name('store.index')->middleware('can:pos.access');
+    Route::get('customers/by-phone', [StoreController::class, 'findCustomerByPhone'])->name('customers.by-phone')->middleware('can:pos.access');
     Route::resource('inventory', InventoryController::class)->only(['index', 'store'])->middleware('can:inventory.manage');
     Route::get('inventory/search', [InventoryController::class, 'search'])->name('inventory.search')->middleware('can:inventory.manage');
     Route::post('inventory/adjust', [InventoryController::class, 'adjustStock'])->name('inventory.adjust')->middleware('can:inventory.adjust');

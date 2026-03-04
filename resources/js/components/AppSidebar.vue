@@ -51,6 +51,11 @@ const page = usePage();
 const user = page.props.auth.user;
 
 const { can } = usePermissions();
+const accountingEnabled = computed(() => {
+    const settings = (page.props.auth as any)?.settings;
+    const merged = settings?.settings ?? settings;
+    return Boolean(merged?.accounting_enabled);
+});
 
 const rawMainNavItems = computed<NavItem[]>(() => [
     {
@@ -64,32 +69,39 @@ const rawMainNavItems = computed<NavItem[]>(() => [
         href: '#', // Placeholder for parent
         icon: Calculator,
         isActive: usePage().url.startsWith('/accounting') || usePage().url.startsWith('/app/accounts'),
-        show: can('financial.manage') || can('financial.view'),
+        show: accountingEnabled.value && (
+            can('accounting.dashboard.view') ||
+            can('accounting.accounts.manage') ||
+            can('accounting.journal.manage') ||
+            can('accounting.reports.view') ||
+            can('financial.manage') ||
+            can('financial.view')
+        ),
         items: [
             {
                 title: 'Dashboard',
                 href: '/accounting',
-                show: can('financial.view'),
+                show: can('accounting.dashboard.view') || can('financial.view'),
             },
             {
                 title: 'Chart of Accounts',
                 href: '/accounting/accounts',
-                show: can('financial.manage'),
+                show: can('accounting.accounts.manage') || can('financial.manage'),
             },
             {
                 title: 'Journal Entries',
                 href: '/accounting/journal-entries',
-                show: can('financial.manage'),
+                show: can('accounting.journal.manage') || can('financial.manage'),
             },
             {
                 title: 'Balance Sheet',
                 href: '/accounting/reports/balance-sheet',
-                show: can('financial.view'),
+                show: can('accounting.reports.view') || can('financial.view'),
             },
             {
                 title: 'Income Statement',
                 href: '/accounting/reports/income-statement',
-                show: can('financial.view'),
+                show: can('accounting.reports.view') || can('financial.view'),
             },
         ],
     },
@@ -116,6 +128,11 @@ const rawMainNavItems = computed<NavItem[]>(() => [
                 title: 'Returns',
                 href: '/app/returns',
                 show: can('returns.manage'),
+            },
+            {
+                title: 'Customers',
+                href: '/app/customers',
+                show: can('customers.manage'),
             },
         ],
     },

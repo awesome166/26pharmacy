@@ -21,6 +21,11 @@ export function usePermissions() {
       return true;
     }
 
+    // 1b. Zeus/system bypass for frontend visibility/guards.
+    if (permsArray.includes('*') || page.props.auth.is_zeus) {
+      return true;
+    }
+
     // 2. Wildcard check: Check if user has any action-specific permission for this module (e.g., 'users.manage:read')
     return permsArray.some(p => p.startsWith(`${permission}:`));
   };

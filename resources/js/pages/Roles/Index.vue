@@ -111,7 +111,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue';
-import { Head } from '@inertiajs/vue3';
+import { Head, router } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import axios from 'axios';
 import PermissionSelector from '@/components/Permissions/PermissionSelector.vue';
@@ -250,7 +250,9 @@ const saveRole = async () => {
             await axios.post('/app/roles', form.value);
         }
         closeModal();
-        fetchRoles();
+        await fetchRoles();
+        // Refresh shared auth payload so frontend permission checks reflect updates immediately.
+        router.reload({ only: ['auth'], preserveState: true, preserveScroll: true });
     } catch (e) {
         if (e.response && e.response.data.errors) {
             errors.value = e.response.data.errors;
