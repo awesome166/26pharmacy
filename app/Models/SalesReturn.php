@@ -15,6 +15,7 @@ class SalesReturn extends Model
         'id',
         'sale_id',
         'account_id',
+        'branch_id',
         'user_id',
         'refund_amount',
         'refund_method',

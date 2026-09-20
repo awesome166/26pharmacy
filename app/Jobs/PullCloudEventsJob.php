@@ -8,6 +8,9 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use App\Services\SyncService;
+use AbacPermissions\Models\Account;
+use AbacPermissions\Tenancy\TenantContext;
+use RuntimeException;
 
 /**
  * Job to pull events from the cloud to the local branch.
@@ -18,15 +21,30 @@ class PullCloudEventsJob implements ShouldQueue
 
     public $queue = 'sync-inbox';
 
-    protected $branchId;
+    public $tries = 5;
 
-    public function __construct(string $branchId)
-    {
-        $this->branchId = $branchId;
+    public function __construct(
+        public readonly ?string $accountId = null,
+        public readonly ?string $deviceId = null,
+    ) {
+        $this->connection = config('sync.queue_connection', 'database');
     }
 
-    public function handle(SyncService $syncService)
+    public function handle(SyncService $syncService): void
     {
-        $syncService->pullFromCloud($this->branchId);
+        if ($this->accountId) {
+            $account = Account::query()->findOrFail($this->accountId);
+            app(TenantContext::class)->setAccount($account);
+        }
+
+        $result = $syncService->forAccount($this->accountId, $this->deviceId)->pull();
+        if (!($result['ok'] ?? false)) {
+            throw new RuntimeException($result['message'] ?? 'Cloud sync pull failed.');
+        }
+    }
+
+    public function backoff(): array
+    {
+        return [10, 30, 60, 120, 300];
     }
 }

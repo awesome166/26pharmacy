@@ -35,6 +35,12 @@ class ReturnServiceTest extends TestCase
         $this->actingAs($user);
 
         $account = \AbacPermissions\Models\Account::create(['name' => 'Test', 'slug' => 'test']);
+        config(['sync.role' => 'child', 'sync.queue_connection' => 'database']);
+        $branchId = (string) \Illuminate\Support\Str::ulid();
+        \App\Models\Branch::create([
+            'branch_id' => $branchId, 'account_id' => $account->id,
+            'name' => 'Main Branch', 'code' => 'MAIN', 'is_active' => true,
+        ]);
 
         $this->mock(\AbacPermissions\Tenancy\TenantContext::class, function ($mock) use ($account) {
             $mock->shouldReceive('getAccountId')->andReturn($account->id);
@@ -50,6 +56,7 @@ class ReturnServiceTest extends TestCase
         $batch = \App\Models\Batch::create([
              'id' => \Illuminate\Support\Str::ulid(),
              'account_id' => $account->id,
+             'branch_id' => $branchId,
              'batch_number' => 'BATCH-001',
              'drug_id' => $drug->id,
              'manufacturer' => 'Test Pharma',
@@ -59,6 +66,7 @@ class ReturnServiceTest extends TestCase
         $inventory = Inventory::create([
             'id' => \Illuminate\Support\Str::ulid(),
             'account_id' => $account->id,
+            'branch_id' => $branchId,
             'drug_id' => $drug->id,
             'batch_id' => $batch->id,
             'quantity_on_hand' => 10,
@@ -69,6 +77,7 @@ class ReturnServiceTest extends TestCase
         $sale = Sale::create([
             'id' => \Illuminate\Support\Str::ulid(),
             'account_id' => $account->id,
+            'branch_id' => $branchId,
             'user_id' => $user->id,
             'total_amount' => 20.00,
             'payment_type' => 'cash',
@@ -86,10 +95,14 @@ class ReturnServiceTest extends TestCase
             'tax_amount' => 0.00,
         ]);
 
+        $deviceId = (string) \Illuminate\Support\Str::ulid();
+        config(['sync.client_id' => $deviceId]);
         \App\Models\Device::create([
-             'device_id' => 'TEST-DEVICE',
+             'device_id' => $deviceId,
+             'account_id' => $account->id,
+             'branch_id' => $branchId,
              'device_name' => 'Test Device',
-             'trust_status' => 'trusted',
+             'trust_status' => 'active',
         ]);
 
         // Perform Return with Restock

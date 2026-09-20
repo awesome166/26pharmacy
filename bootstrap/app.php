@@ -39,6 +39,8 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             // 'permission' => \App\AccessControl\Middleware\EnsurePermission::class,
             'accounting.enabled' => \App\Http\Middleware\EnsureAccountingEnabled::class,
+            'sync.token' => \App\Http\Middleware\VerifySyncToken::class,
+            'licensed' => \App\Http\Middleware\EnsureLicensed::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

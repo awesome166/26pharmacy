@@ -23,6 +23,10 @@ class TaxRate extends Model
         'jurisdiction',
         'tax_name',
         'percentage',
+        'minimum_taxable_amount',
+        'maximum_taxable_amount',
+        'calculation_order',
+        'is_compound',
         'tax_type',
         'applicable_categories',
         'description',
@@ -33,6 +37,10 @@ class TaxRate extends Model
 
     protected $casts = [
         'percentage' => 'decimal:2',
+        'minimum_taxable_amount' => 'decimal:2',
+        'maximum_taxable_amount' => 'decimal:2',
+        'calculation_order' => 'integer',
+        'is_compound' => 'boolean',
         'applicable_categories' => 'array',
         'effective_from' => 'date',
         'effective_to' => 'date',

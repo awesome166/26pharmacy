@@ -52,6 +52,22 @@ class ReturnService
 
             $returnId = Str::ulid();
             $accountId = app(TenantContext::class)->getAccountId();
+            $deviceId = $returnData['device_id'] ?? request()->header('X-Device-Id') ?? config('sync.client_id')
+                ?? Device::where('account_id', $accountId)->where('trust_status', 'active')->value('device_id');
+            $device = Device::where('device_id', $deviceId)->where('account_id', $accountId)->firstOrFail();
+            if ((string) $sale->branch_id !== (string) $device->branch_id) {
+                throw new \RuntimeException('Returns must be processed by a device in the original sale branch.');
+            }
+
+            $calculatedRefundAmount = 0.0;
+            foreach ($returnData['items'] as $item) {
+                $saleItem = $sale->items->firstWhere('id', $item['sale_item_id']);
+                $taxRefund = $saleItem->quantity > 0
+                    ? ((int) $item['quantity'] / (int) $saleItem->quantity) * (float) $saleItem->tax_amount
+                    : 0;
+                $calculatedRefundAmount += ((float) $saleItem->price * (int) $item['quantity']) + $taxRefund;
+            }
+            $calculatedRefundAmount = round($calculatedRefundAmount, 2);
 
             // 1. Create Return Header
             $salesReturn = SalesReturn::create([
@@ -59,14 +75,16 @@ class ReturnService
                 'sale_id' => $sale->id,
                 // 'account_id' => handled via UsesTenant or explicit?
                 'account_id' => $accountId,
+                'branch_id' => $device->branch_id,
                 'user_id' => $user->id,
-                'refund_amount' => $returnData['refund_amount'],
+                'refund_amount' => $calculatedRefundAmount,
                 'refund_method' => $returnData['refund_method'] ?? 'cash',
                 'reason' => $returnData['reason'],
                 'returned_at' => now(),
             ]);
 
             $returnItems = [];
+            $eventItems = [];
 
             $totalRefundAmount = 0;
             $totalTaxRefund = 0;
@@ -77,8 +95,7 @@ class ReturnService
                 // Calculate refund amount strictly proportional if not provided?
                 // Or trust frontend? Trust frontend but maybe validate cap.
                 // For now, let's assume simple unit price refund
-                $refundAmount = $saleItem->price * $item['quantity']; // Simple calculation
-                $totalRefundAmount += $refundAmount;
+                $baseRefund = (float) $saleItem->price * (int) $item['quantity'];
 
                 // Calculate prorated tax refund
                 // Formula: (Returned Qty / Original Qty) * Original Tax Amount
@@ -87,6 +104,8 @@ class ReturnService
                      $taxRefund = ($item['quantity'] / $saleItem->quantity) * $saleItem->tax_amount;
                 }
                 $totalTaxRefund += $taxRefund;
+                $refundAmount = round($baseRefund + $taxRefund, 2);
+                $totalRefundAmount += $refundAmount;
 
                 $returnItem = SalesReturnItem::create([
                     'id' => Str::ulid(),
@@ -99,6 +118,12 @@ class ReturnService
                 ]);
 
                 $returnItems[] = $returnItem;
+                $eventItems[] = [
+                    'id' => (string) $returnItem->id, 'sale_item_id' => (string) $saleItem->id,
+                    'inventory_id' => (string) $saleItem->inventory_id, 'quantity' => (int) $item['quantity'],
+                    'refund_amount' => (float) $refundAmount, 'is_restocked' => (bool) ($item['restock'] ?? false),
+                    'condition' => $item['condition'] ?? 'Good',
+                ];
 
                 // Update SaleItem return status
                 $saleItem->increment('return_quantity', $item['quantity']);
@@ -108,7 +133,7 @@ class ReturnService
                 ]);
 
                 // Restock Inventory if requested
-                if ($item['restock']) {
+                if ($item['restock'] ?? false) {
                     Inventory::where('id', $saleItem->inventory_id)
                         ->increment('quantity_on_hand', $item['quantity']);
 
@@ -131,25 +156,24 @@ class ReturnService
                 }
             }
 
-            // Update Sale totals
+            // Update Sale return totals (preserve original sale amounts for audit trail)
             $sale->increment('total_returned_amount', $totalRefundAmount);
-            // We decrease the total_amount to reflect the NET value
-            $sale->decrement('total_amount', $totalRefundAmount);
-            // Decrease tax and subtotal
-            $sale->decrement('tax_amount', $totalTaxRefund);
-            $sale->decrement('subtotal_amount', ($totalRefundAmount - $totalTaxRefund)); // Assuming total = subtotal + tax
 
             // Emit Event
             $eventData = [
                 'account_id' => $accountId,
-                'device_id' => request()->header('X-Device-Id') ?? (Device::value('device_id') ?? 'unknown'),
+                'device_id' => $deviceId,
                 'actor_user_id' => $user->id,
                 'event_type' => 'SALE_RETURNED',
+                'project_locally' => false,
                 'event_payload' => [
                     'return_id' => $returnId,
                     'sale_id' => $sale->id,
                     'refund_amount' => $salesReturn->refund_amount,
-                    'items_count' => count($returnItems),
+                    'refund_method' => $salesReturn->refund_method,
+                    'reason' => $salesReturn->reason,
+                    'user_id' => $user->id,
+                    'items' => $eventItems,
                     'returned_at' => now()->toIso8601String(),
                 ]
             ];
@@ -179,6 +203,10 @@ class ReturnService
 
             $saleItem = $returnItem->saleItem;
             $accountId = app(TenantContext::class)->getAccountId();
+            $device = app(DeviceContextService::class)->currentDevice((string) $accountId);
+            if ((string) $returnItem->salesReturn->branch_id !== (string) $device->branch_id) {
+                throw new \RuntimeException('This return belongs to a different branch.');
+            }
 
             // Restock the inventory
             Inventory::where('id', $saleItem->inventory_id)
@@ -186,6 +214,21 @@ class ReturnService
 
             // Update the return item status
             $returnItem->update(['is_restocked' => true]);
+
+            $this->ledger->emitEvent([
+                'account_id' => $accountId,
+                'device_id' => $device->device_id,
+                'actor_user_id' => $user->id,
+                'event_type' => 'STOCK_ADJUSTED',
+                'project_locally' => false,
+                'event_payload' => [
+                    'inventory_id' => $saleItem->inventory_id,
+                    'batch_id' => $saleItem->batch_id,
+                    'quantity_change' => (int) $returnItem->quantity,
+                    'reason' => 'RETURN_RESTOCKED_LATER',
+                    'return_id' => $returnItem->return_id,
+                ],
+            ]);
 
             // Create audit log
             \App\Models\AuditTrail::create([

@@ -11,7 +11,7 @@ use AbacPermissions\Tenancy\TenantContext;
 
 class SystemSettingRetrievalTest extends TestCase
 {
-    // use RefreshDatabase; // Be careful with RefreshDatabase on existing dev envs if not configured for testing sqlite
+    use RefreshDatabase;
 
     public function test_can_retrieve_platform_setting_while_impersonating_tenant()
     {
@@ -22,11 +22,11 @@ class SystemSettingRetrievalTest extends TestCase
         );
 
         // 2. Create a tenant
-        $account = Account::create(['name' => 'Test Tenant']);
+        $account = Account::create(['name' => 'Test Tenant', 'slug' => 'test-tenant']);
 
         // 3. Set context to this tenant
         $context = app(TenantContext::class);
-        $context->setAccountId($account->id);
+        $context->setAccount($account);
 
         // 4. Verification 1: SystemSetting::getValue
         // Before the fix, this would fail (return default) because of Global Scope

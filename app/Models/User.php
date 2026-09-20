@@ -4,19 +4,18 @@ namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Fortify\TwoFactorAuthenticatable;
+use Laravel\Sanctum\HasApiTokens;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 
 class User extends Authenticatable
 {
     use \AbacPermissions\Traits\HasAbac;
 
-
     /** @use HasFactory<\Database\Factories\UserFactory> */
-    use HasFactory, Notifiable, TwoFactorAuthenticatable, HasUlids;
+    use HasApiTokens, HasFactory, Notifiable, TwoFactorAuthenticatable, HasUlids;
 
     protected $primaryKey = 'id';
     // public $incrementing = false;

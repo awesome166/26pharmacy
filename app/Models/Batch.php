@@ -10,13 +10,15 @@ use Illuminate\Database\Eloquent\Concerns\HasUlids;
 
 class Batch extends Model
 {
-    use HasUlids;
+    use HasUlids, \AbacPermissions\Tenancy\UsesTenant;
 
     protected $primaryKey = 'id';
     protected $appends = ['batch_number'];
 
     protected $fillable = [
         'id',
+        'account_id',
+        'branch_id',
         'drug_id',
         'manufacture_date',
         'manufacturer',
@@ -27,7 +29,6 @@ class Batch extends Model
         'lot_number',
         'quantity',
         'quantity_received',
-        'quantity_recieved',
         'cost_price',
         'name',
         'storage_location',
@@ -54,5 +55,10 @@ class Batch extends Model
     public function getBatchNumberAttribute(): ?string
     {
         return $this->lot_number;
+    }
+
+    public function getQuantityReceivedAttribute(): ?int
+    {
+        return $this->attributes['quantity_received'] ?? $this->attributes['quantity_recieved'] ?? 0;
     }
 }

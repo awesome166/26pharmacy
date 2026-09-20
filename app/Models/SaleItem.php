@@ -21,8 +21,10 @@ class SaleItem extends Model
         'drug_id',
         'quantity',
         'price',
+        'unit_cost',
         'line_total',
         'tax_amount',
+        'tax_breakdown',
         'requires_prescription',
         'prescription_metadata',
         'dosage_instructions',
@@ -33,8 +35,10 @@ class SaleItem extends Model
 
     protected $casts = [
         'price' => 'decimal:2',
+        'unit_cost' => 'decimal:2',
         'line_total' => 'decimal:2',
         'tax_amount' => 'decimal:2',
+        'tax_breakdown' => 'array',
         'requires_prescription' => 'boolean',
         'prescription_metadata' => 'array',
         'dosage_instructions' => 'array',

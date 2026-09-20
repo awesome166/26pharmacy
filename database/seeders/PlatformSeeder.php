@@ -25,6 +25,27 @@ class PlatformSeeder extends Seeder
         $pharmacistId = DB::table('users')->where('email', 'pharmacist@pharmacy.com')->value('id');
         $customerServiceId = DB::table('users')->where('email', 'support@pharmacy.com')->value('id');
 
+        $branchIds = [];
+        foreach ($accounts as $accountId) {
+            $branchId = DB::table('branches')->where('account_id', $accountId)
+                ->where('is_active', true)->orderBy('created_at')->value('branch_id');
+            if (!$branchId) {
+                $branchId = (string) Str::ulid();
+                DB::table('branches')->insert([
+                    'branch_id' => $branchId,
+                    'account_id' => $accountId,
+                    'name' => 'Main Branch',
+                    'code' => 'MAIN',
+                    'tax_jurisdiction' => 'Default',
+                    'timezone' => config('app.timezone', 'UTC'),
+                    'is_active' => true,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
+            $branchIds[(string) $accountId] = (string) $branchId;
+        }
+
         // Clear existing data in correct order (reverse of creation)
         // DB::table('event_rejections')->delete();
         // DB::table('audit_trail')->delete();
@@ -73,6 +94,7 @@ class PlatformSeeder extends Seeder
                     'device_name' => $faker->randomElement(['Main Counter', 'Drive-thru', 'Consultation', 'Stockroom']) . ' ' . $faker->randomElement(['POS', 'Scanner', 'Tablet']),
                     'trust_status' => 'active',
                     'account_id' => $accountId,
+                    'branch_id' => $branchIds[(string) $accountId],
                     'device_type' => $faker->randomElement(['POS', 'Mobile', 'Tablet', 'Kiosk']),
                     'serial_number' => $faker->bothify('SN-########'),
                     'mac_address' => $faker->macAddress,
@@ -85,31 +107,57 @@ class PlatformSeeder extends Seeder
 
         // 2. Create Event Ledger entries
         foreach ($deviceIds as $deviceId) {
-            $accountId = DB::table('devices')->where('device_id', $deviceId)->value('account_id');
+            $device = DB::table('devices')->where('device_id', $deviceId)->first();
+            $accountId = $device->account_id;
             $eventCount = rand(5, 15);
+            $previousHash = str_repeat('0', 64);
 
             for ($e = 0; $e < $eventCount; $e++) {
+                $eventId = (string) Str::ulid();
+                $eventTime = now()->subHours(rand(1, 48))->startOfSecond();
+                $payload = [
+                    'action' => $faker->sentence(3),
+                    'details' => $faker->sentence(10),
+                    'timestamp' => $eventTime->toDateTimeString(),
+                ];
+                $eventType = $faker->randomElement(['sale.created', 'inventory.updated', 'user.logged_in', 'device.registered']);
+                $actorUserId = $faker->optional(0.8)->randomElement($users);
+                $eventHash = app(\App\Services\EventLedgerService::class)->computeEventHash([
+                    'id' => $eventId,
+                    'account_id' => (string) $accountId,
+                    'branch_id' => (string) $device->branch_id,
+                    'device_id' => (string) $deviceId,
+                    'actor_user_id' => $actorUserId,
+                    'event_type' => $eventType,
+                    'event_version' => 1,
+                    'event_payload' => $payload,
+                    'local_sequence' => $e + 1,
+                    'event_time_utc' => $eventTime->toISOString(),
+                    'previous_hash' => $previousHash,
+                ]);
+
                 DB::table('event_ledger')->insert([
-                    'id' => (string) Str::ulid(),
+                    'id' => $eventId,
                     'account_id' => $accountId,
+                    'branch_id' => $device->branch_id,
                     'device_id' => $deviceId,
-                    'actor_user_id' => $faker->optional(0.8)->randomElement($users),
-                    'event_type' => $faker->randomElement(['sale.created', 'inventory.updated', 'user.logged_in', 'device.registered']),
+                    'actor_user_id' => $actorUserId,
+                    'event_type' => $eventType,
                     'event_category' => $faker->randomElement(['sale', 'inventory', 'audit', 'system']),
                     'event_version' => 1,
-                    'event_payload' => json_encode([
-                        'action' => $faker->sentence(3),
-                        'details' => $faker->sentence(10),
-                        'timestamp' => now()->toDateTimeString()
-                    ]),
+                    'event_payload' => json_encode($payload),
                     'local_sequence' => $e + 1,
-                    'event_time_utc' => now()->subHours(rand(1, 48)),
-                    'event_hash' => Str::random(64),
+                    'event_time_utc' => $eventTime,
+                    'event_hash' => $eventHash,
+                    'previous_hash' => $previousHash,
                     'received_at_cloud' => now()->subHours(rand(0, 24)),
+                    'sync_status' => 'synced',
+                    'synced_at' => now()->subHours(rand(0, 24)),
                     'metadata' => json_encode(['source' => 'device', 'priority' => 'normal']),
-                    'created_at' => now()->subHours(rand(1, 48)),
+                    'created_at' => $eventTime,
                     'updated_at' => now(),
                 ]);
+                $previousHash = $eventHash;
             }
         }
 
@@ -165,68 +213,107 @@ class PlatformSeeder extends Seeder
              $this->command->info('Using ' . count($drugIds) . ' existing drugs from database.');
         }
 
-        // 4. Create Batches for drugs
-        $batchIds = [];
-        // Limit to a reasonable number of drugs for batch creation to avoid performance issues
-        $drugsForBatches = count($drugIds) > 50 ? $faker->randomElements($drugIds, 50) : $drugIds;
-
-        foreach ($drugsForBatches as $drugId) {
-            for ($b = 0; $b < rand(1, 3); $b++) {
-                $batchId = (string) Str::ulid();
-                $manufactureDate = $faker->dateTimeBetween('-1 year', '-3 months');
-                $expiryDate = (clone $manufactureDate)->modify('+' . rand(12, 24) . ' months');
-
-                DB::table('batches')->insert([
-                    'id' => $batchId,
-                    'drug_id' => $drugId,
-                    'manufacture_date' => $manufactureDate->format('Y-m-d'),
-                    'manufacturer' => $faker->company,
-                    'supplier' => $faker->company,
-                    'received_date' => $faker->dateTimeBetween($manufactureDate, '+1 month')->format('Y-m-d'),
-                    'is_active' => true,
-                    'expiry_date' => $expiryDate->format('Y-m-d'),
-                    'lot_number' => $faker->bothify('LOT-####'),
-                    'quantity' => $faker->numberBetween(500, 5000),
-                    'quantity_recieved' => $faker->numberBetween(500, 5000),
-                    'cost_price' => $faker->randomFloat(2, 0.50, 50.00),
-                    'name' => $faker->optional(0.3)->word . ' Batch',
-                    'storage_location' => $faker->randomElement(['Shelf A', 'Refrigerator', 'Room Temp']),
-                    'created_at' => $manufactureDate,
-                    'updated_at' => now(),
-                ]);
-                $batchIds[] = $batchId;
-            }
-        }
-      $inventoryIds = [];
+        // Materialize the global seed catalog per tenant. Operational drug,
+        // batch, and inventory rows must never be shared across accounts.
+        // A representative catalog is enough for demo operational data; the
+        // full global reference catalog can contain tens of thousands of rows.
+        $templateDrugs = DB::table('drugs')->whereNull('account_id')
+            ->orderBy('id')->limit(50)->get();
+        $drugIdsByAccount = [];
         foreach ($accounts as $accountId) {
-            $pharmacyDrugs = $faker->randomElements($drugIds, rand(8, 12));
+            $tenantDrugIds = DB::table('drugs')->where('account_id', $accountId)->pluck('id')->all();
+            if (empty($tenantDrugIds)) {
+                foreach ($templateDrugs as $templateDrug) {
+                    $copy = (array) $templateDrug;
+                    $copy['id'] = (string) Str::ulid();
+                    $copy['account_id'] = $accountId;
+                    $copy['created_at'] ??= now();
+                    $copy['updated_at'] = now();
+                    DB::table('drugs')->insert($copy);
+                    $tenantDrugIds[] = $copy['id'];
+                }
+            }
+            $drugIdsByAccount[(string) $accountId] = $tenantDrugIds;
+        }
+        $drugIds = array_values(array_merge([], ...array_values($drugIdsByAccount)));
 
-            foreach ($pharmacyDrugs as $drugId) {
-                $batchId = $faker->randomElement($batchIds);
+        // 4. Create tenant- and branch-owned batches and inventory.
+        $batchIds = [];
+        $batchIdsByAccount = [];
+        $inventoryIds = [];
+        $inventoryIdsByAccount = [];
+        foreach ($accounts as $accountId) {
+            $accountKey = (string) $accountId;
+            $accountDrugIds = $drugIdsByAccount[$accountKey];
+            $drugsForBatches = count($accountDrugIds) > 50
+                ? $faker->randomElements($accountDrugIds, 50)
+                : $accountDrugIds;
+
+            foreach ($drugsForBatches as $drugId) {
+                for ($b = 0; $b < rand(1, 3); $b++) {
+                    $batchId = (string) Str::ulid();
+                    $manufactureDate = $faker->dateTimeBetween('-1 year', '-3 months');
+                    $expiryDate = (clone $manufactureDate)->modify('+'.rand(12, 24).' months');
+                    $quantityReceived = $faker->numberBetween(500, 5000);
+
+                    DB::table('batches')->insert([
+                        'id' => $batchId,
+                        'account_id' => $accountId,
+                        'branch_id' => $branchIds[$accountKey],
+                        'drug_id' => $drugId,
+                        'manufacture_date' => $manufactureDate->format('Y-m-d'),
+                        'manufacturer' => $faker->company,
+                        'supplier' => $faker->company,
+                        'received_date' => $faker->dateTimeBetween($manufactureDate, '+1 month')->format('Y-m-d'),
+                        'is_active' => true,
+                        'expiry_date' => $expiryDate->format('Y-m-d'),
+                        'lot_number' => $faker->bothify('LOT-####'),
+                        'quantity' => $quantityReceived,
+                        'quantity_recieved' => $quantityReceived,
+                        'quantity_received' => $quantityReceived,
+                        'cost_price' => $faker->randomFloat(2, 0.50, 50.00),
+                        'name' => $faker->optional(0.3)->word.' Batch',
+                        'storage_location' => $faker->randomElement(['Shelf A', 'Refrigerator', 'Room Temp']),
+                        'created_at' => $manufactureDate,
+                        'updated_at' => now(),
+                    ]);
+                    $batchIds[] = $batchId;
+                    $batchIdsByAccount[$accountKey][] = $batchId;
+                }
+            }
+
+            $accountBatchIds = $batchIdsByAccount[$accountKey] ?? [];
+            $stockedBatchIds = $accountBatchIds
+                ? $faker->randomElements($accountBatchIds, min(rand(8, 12), count($accountBatchIds)))
+                : [];
+            foreach ($stockedBatchIds as $batchId) {
+                $batch = DB::table('batches')->where('id', $batchId)->first();
                 $inventoryId = (string) Str::ulid();
-                $costPrice = DB::table('batches')->where('id', $batchId)->value('cost_price');
-                $sellingPrice = $costPrice * $faker->randomFloat(2, 1.3, 2.0);
+                $sellingPrice = (float) $batch->cost_price * $faker->randomFloat(2, 1.3, 2.0);
 
                 DB::table('inventory')->insert([
                     'id' => $inventoryId,
                     'account_id' => $accountId,
-                    'drug_id' => $drugId,
+                    'branch_id' => $branchIds[$accountKey],
+                    'drug_id' => $batch->drug_id,
                     'batch_id' => $batchId,
                     'selling_price' => round($sellingPrice, 2),
-                    'cost_price' => $costPrice,
+                    'cost_price' => $batch->cost_price,
                     'reorder_level' => $faker->numberBetween(20, 100),
                     'location' => $faker->randomElement(['Shelf A1', 'Shelf B3', 'Refrigerator 1']),
                     'is_active' => true,
-                    'quantity_on_hand' => $quantity = $faker->numberBetween(50, 500),
+                    'quantity_on_hand' => $faker->numberBetween(50, 500),
                     'created_at' => now()->subDays(rand(1, 90)),
                     'updated_at' => now(),
                 ]);
                 $inventoryIds[] = $inventoryId;
+                $inventoryIdsByAccount[$accountKey][] = $inventoryId;
             }
         }
 
         // 6. Create Sales for each pharmacy
         $saleIds = [];
+        $saleIdsByAccount = [];
         foreach ($accounts as $accountId) {
             $salesCount = rand(10, 20);
 
@@ -239,6 +326,7 @@ class PlatformSeeder extends Seeder
                 DB::table('sales')->insert([
                     'id' => $saleId,
                     'account_id' => $accountId,
+                    'branch_id' => $branchIds[(string) $accountId],
                     'user_id' => $faker->randomElement([$pharmacistId, $customerServiceId]),
                     'subtotal_amount' => $subtotal,
                     'tax_amount' => $tax,
@@ -292,18 +380,23 @@ class PlatformSeeder extends Seeder
                     ]);
                 }
                 $saleIds[] = $saleId;
+                $saleIdsByAccount[(string) $accountId][] = $saleId;
             }
         }
 
         // 7. Create Sale Items
         foreach ($saleIds as $saleId) {
+            $sale = DB::table('sales')->where('id', $saleId)->first();
             $itemCount = rand(1, 5);
-            $inventoryItems = $faker->randomElements($inventoryIds, min($itemCount, count($inventoryIds)));
+            $accountInventoryIds = $inventoryIdsByAccount[(string) $sale->account_id] ?? [];
+            $inventoryItems = $accountInventoryIds
+                ? $faker->randomElements($accountInventoryIds, min($itemCount, count($accountInventoryIds)))
+                : [];
 
             foreach ($inventoryItems as $inventoryId) {
                 $inventory = DB::table('inventory')->where('id', $inventoryId)->first();
                 $batch = DB::table('batches')->where('id', $inventory->batch_id)->first();
-                $drug = DB::table('drugs')->where('drug_id', $inventory->drug_id)->first(); // Changed from 'id' to 'drug_id'
+                $drug = DB::table('drugs')->where('id', $inventory->drug_id)->first();
 
                 $quantity = $faker->numberBetween(1, 3);
                 $unitPrice = $inventory->selling_price;
@@ -320,6 +413,8 @@ class PlatformSeeder extends Seeder
                     'price' => $unitPrice,
                     'line_total' => $lineTotal,
                     'tax_amount' => $taxAmount,
+                    'unit_cost' => $inventory->cost_price,
+                    'tax_breakdown' => json_encode([]),
                     'requires_prescription' => $drug ? $drug->is_prescription : false,
                     'prescription_metadata' => $drug && $drug->is_prescription ? json_encode([
                         'verified' => true,
@@ -352,6 +447,7 @@ class PlatformSeeder extends Seeder
                 DB::table('financial_day_summaries')->insert([
                     'id' => (string) Str::ulid(),
                     'account_id' => $accountId,
+                    'branch_id' => $branchIds[(string) $accountId],
                     'day' => $date->toDateString(),
                     'gross_sales' => $grossSales,
                     'net_sales' => $netSales,
@@ -433,12 +529,13 @@ class PlatformSeeder extends Seeder
         // 10. Create Audit Trail
         for ($a = 0; $a < 50; $a++) {
             $accountId = $faker->randomElement($accounts);
+            $accountKey = (string) $accountId;
             $entityType = $faker->randomElement(['sale', 'inventory', 'drug', 'batch', 'user']);
             $entityId = match($entityType) {
-                'sale' => $faker->randomElement($saleIds),
-                'inventory' => $faker->randomElement($inventoryIds),
-                'drug' => $faker->randomElement($drugIds),
-                'batch' => $faker->randomElement($batchIds),
+                'sale' => $faker->randomElement($saleIdsByAccount[$accountKey]),
+                'inventory' => $faker->randomElement($inventoryIdsByAccount[$accountKey]),
+                'drug' => $faker->randomElement($drugIdsByAccount[$accountKey]),
+                'batch' => $faker->randomElement($batchIdsByAccount[$accountKey]),
                 default => (string) Str::ulid(),
             };
 

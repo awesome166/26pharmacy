@@ -24,14 +24,16 @@ class DashboardController extends Controller
     public function stats(Request $request)
     {
         $accountId = app(TenantContext::class)->getAccountId();
-        $cacheKey = 'dashboard.stats.' . $accountId;
+        $branchId = app(\App\Services\DeviceContextService::class)->currentBranchId((string) $accountId, $request->header('X-Device-Id'));
+        $cacheKey = 'dashboard.stats.' . $accountId . '.' . $branchId;
 
-        $stats = Cache::remember($cacheKey, self::CACHE_TTL, function () use ($accountId) {
+        $stats = Cache::remember($cacheKey, self::CACHE_TTL, function () use ($accountId, $branchId) {
             $today = Carbon::today();
             $startOfMonth = Carbon::now()->startOfMonth();
 
             // Today's sales count and revenue (Explicit account_id filter)
             $todaySales = Sale::where('account_id', $accountId)
+                ->where('branch_id', $branchId)
                 ->whereDate('finalized_at', $today)
                 ->get();
             $todaySalesCount = $todaySales->count();
@@ -39,11 +41,13 @@ class DashboardController extends Controller
 
             // This month's sales count (Explicit account_id filter)
             $monthSalesCount = Sale::where('account_id', $accountId)
+                ->where('branch_id', $branchId)
                 ->whereBetween('finalized_at', [$startOfMonth, Carbon::now()])
                 ->count();
 
             // Low stock items (Explicit account_id filter)
             $lowStockCount = Inventory::where('account_id', $accountId)
+                ->where('branch_id', $branchId)
                 ->where('quantity_on_hand', '<', 10)
                 ->count();
 
@@ -65,13 +69,15 @@ class DashboardController extends Controller
     {
         $days = (int) $request->input('days', 7);
         $accountId = app(TenantContext::class)->getAccountId();
-        $cacheKey = 'dashboard.sales_trend.' . $accountId . '.' . $days;
+        $branchId = app(\App\Services\DeviceContextService::class)->currentBranchId((string) $accountId, $request->header('X-Device-Id'));
+        $cacheKey = 'dashboard.sales_trend.' . $accountId . '.' . $branchId . '.' . $days;
 
-        $data = Cache::remember($cacheKey, self::CACHE_TTL, function () use ($days, $accountId) {
+        $data = Cache::remember($cacheKey, self::CACHE_TTL, function () use ($days, $accountId, $branchId) {
             $startDate = Carbon::now()->subDays($days - 1)->startOfDay();
 
             // Use Eloquent with explicit account_id filter
             $salesData = Sale::where('account_id', $accountId)
+                ->where('branch_id', $branchId)
                 ->whereBetween('finalized_at', [$startDate, Carbon::now()])
                 ->selectRaw('DATE(finalized_at) as date, COUNT(*) as count, SUM(total_amount) as revenue')
                 ->groupBy('date')
@@ -111,12 +117,13 @@ class DashboardController extends Controller
     {
         $limit = (int) $request->input('limit', 10);
         $accountId = app(TenantContext::class)->getAccountId();
-        $cacheKey = 'dashboard.top_products.' . $accountId . '.' . $limit;
+        $branchId = app(\App\Services\DeviceContextService::class)->currentBranchId((string) $accountId, $request->header('X-Device-Id'));
+        $cacheKey = 'dashboard.top_products.' . $accountId . '.' . $branchId . '.' . $limit;
 
-        $data = Cache::remember($cacheKey, self::CACHE_TTL, function () use ($limit, $accountId) {
+        $data = Cache::remember($cacheKey, self::CACHE_TTL, function () use ($limit, $accountId, $branchId) {
             // Use Eloquent with relationships and explicit account_id filter via sale
-            $topProducts = SaleItem::whereHas('sale', function ($query) use ($accountId) {
-                    $query->where('account_id', $accountId);
+            $topProducts = SaleItem::whereHas('sale', function ($query) use ($accountId, $branchId) {
+                    $query->where('account_id', $accountId)->where('branch_id', $branchId);
                 })
                 ->with('drug:id,name')
                 ->selectRaw('drug_id, SUM(quantity) as total_quantity')
@@ -140,11 +147,13 @@ class DashboardController extends Controller
     public function paymentBreakdown(Request $request)
     {
         $accountId = app(TenantContext::class)->getAccountId();
-        $cacheKey = 'dashboard.payment_breakdown.' . $accountId;
+        $branchId = app(\App\Services\DeviceContextService::class)->currentBranchId((string) $accountId, $request->header('X-Device-Id'));
+        $cacheKey = 'dashboard.payment_breakdown.' . $accountId . '.' . $branchId;
 
-        $data = Cache::remember($cacheKey, self::CACHE_TTL, function () use ($accountId) {
+        $data = Cache::remember($cacheKey, self::CACHE_TTL, function () use ($accountId, $branchId) {
             // Use Eloquent with explicit account_id filter
             $paymentData = Sale::where('account_id', $accountId)
+                ->where('branch_id', $branchId)
                 ->select('payment_type')
                 ->selectRaw('COUNT(*) as count')
                 ->whereNotNull('payment_type')
@@ -163,15 +172,16 @@ class DashboardController extends Controller
     /**
      * Clear dashboard cache (useful after sales are created)
      */
-    public function clearCache()
+    public function clearCache(Request $request)
     {
         $accountId = app(TenantContext::class)->getAccountId();
+        $branchId = app(\App\Services\DeviceContextService::class)->currentBranchId((string) $accountId, $request->header('X-Device-Id'));
 
-        Cache::forget('dashboard.stats.' . $accountId);
-        Cache::forget('dashboard.sales_trend.' . $accountId . '.7');
-        Cache::forget('dashboard.sales_trend.' . $accountId . '.30');
-        Cache::forget('dashboard.top_products.' . $accountId . '.10');
-        Cache::forget('dashboard.payment_breakdown.' . $accountId);
+        Cache::forget('dashboard.stats.' . $accountId . '.' . $branchId);
+        Cache::forget('dashboard.sales_trend.' . $accountId . '.' . $branchId . '.7');
+        Cache::forget('dashboard.sales_trend.' . $accountId . '.' . $branchId . '.30');
+        Cache::forget('dashboard.top_products.' . $accountId . '.' . $branchId . '.10');
+        Cache::forget('dashboard.payment_breakdown.' . $accountId . '.' . $branchId);
 
         return response()->json(['message' => 'Dashboard cache cleared']);
     }

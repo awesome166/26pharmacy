@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\User;
+use App\Models\Branch;
 use App\Models\SystemSetting;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -19,6 +20,13 @@ class SystemConfigTest extends TestCase
         $this->withoutMiddleware();
 
         $account = \AbacPermissions\Models\Account::create(['name' => 'Test', 'slug' => 'test']);
+        Branch::create([
+            'branch_id' => (string) \Illuminate\Support\Str::ulid(),
+            'account_id' => $account->id,
+            'name' => 'Main Branch',
+            'code' => 'MAIN',
+            'is_active' => true,
+        ]);
 
         $this->mock(\AbacPermissions\Tenancy\TenantContext::class, function ($mock) use ($account) {
             $mock->shouldReceive('getAccountId')->andReturn($account->id);
@@ -26,20 +34,20 @@ class SystemConfigTest extends TestCase
 
         // Define expected defaults (all false)
         $defaults = [
-            'system_inventory_batch_mode' => false,
-            'system_sales_enable_loyalty' => false,
+            'inventory_batch_mode' => false,
+            'sales_enable_loyalty' => false,
             'system_debug_mode' => false,
         ];
 
         // 1. Verify defaults via GET and 'exists' flag
         $response = $this->getJson('/app/config');
         $response->assertStatus(200)
-            ->assertJsonPath('exists', false);
+            ->assertJsonPath('exists', true);
 
         // 2. First Save (POST)
         $newSettings = [
-            'system_inventory_batch_mode' => true,
-            'system_sales_enable_loyalty' => true,
+            'inventory_batch_mode' => true,
+            'sales_enable_loyalty' => true,
         ];
 
         $updateResponse = $this->postJson('/app/config', [
@@ -49,7 +57,7 @@ class SystemConfigTest extends TestCase
 
         // 3. Verify persistence (Check DB string value '1')
         $this->assertDatabaseHas('system_settings', [
-            'key' => 'system_inventory_batch_mode',
+            'key' => 'inventory_batch_mode',
             'value' => '1',
             'account_id' => $account->id,
             'type' => 'tenant'
@@ -62,7 +70,7 @@ class SystemConfigTest extends TestCase
 
          // 5. Second Save (PATCH)
         $patchSettings = [
-            'system_inventory_batch_mode' => false, // Toggle back
+            'inventory_batch_mode' => false, // Toggle back
         ];
 
         $patchResponse = $this->patchJson('/app/config', [
@@ -71,7 +79,7 @@ class SystemConfigTest extends TestCase
         $patchResponse->assertStatus(200);
 
         $this->assertDatabaseHas('system_settings', [
-            'key' => 'system_inventory_batch_mode',
+            'key' => 'inventory_batch_mode',
             'value' => '0',
             'account_id' => $account->id
         ]);
@@ -87,11 +95,11 @@ class SystemConfigTest extends TestCase
             $mock->shouldReceive('getAccountId')->andReturn(null);
         });
 
-        // Attempt to set a key starting with 'system' from platform context
+        // Tenant keys cannot be written without a tenant context.
         $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage("Platform cannot set tenant-specific configuration keys");
+        $this->expectExceptionMessage("Platform can only set system configuration keys");
 
-        SystemSetting::setValue('system_debug_mode', true);
+        SystemSetting::setValue('inventory_batch_mode', true);
     }
 
     #[Test]
@@ -106,15 +114,15 @@ class SystemConfigTest extends TestCase
             $mock->shouldReceive('getAccountId')->andReturn($account->id);
         });
 
-        // Attempt to set a key NOT starting with 'system' from tenant context
+        // Platform keys cannot be overridden by a tenant.
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage("Tenants cannot set platform configuration keys");
 
-        SystemSetting::setValue('inventory_batch_mode', true);
+        SystemSetting::setValue('system_debug_mode', true);
     }
 
     #[Test]
-    public function platform_can_set_non_system_keys()
+    public function platform_can_set_system_keys()
     {
         // Mock Platform Context (no account)
         $this->withoutMiddleware();
@@ -123,11 +131,10 @@ class SystemConfigTest extends TestCase
             $mock->shouldReceive('getAccountId')->andReturn(null);
         });
 
-        // Platform should be able to set keys NOT starting with 'system'
-        SystemSetting::setValue('inventory_batch_mode', true);
+        SystemSetting::setValue('system_debug_mode', true);
 
         $this->assertDatabaseHas('system_settings', [
-            'key' => 'inventory_batch_mode',
+            'key' => 'system_debug_mode',
             'value' => '1',
             'account_id' => null,
             'type' => 'platform'
@@ -135,7 +142,7 @@ class SystemConfigTest extends TestCase
     }
 
     #[Test]
-    public function tenant_can_set_system_keys()
+    public function tenant_can_set_tenant_keys()
     {
         // Mock Tenant Context
         $this->withoutMiddleware();
@@ -146,11 +153,10 @@ class SystemConfigTest extends TestCase
             $mock->shouldReceive('getAccountId')->andReturn($account->id);
         });
 
-        // Tenant should be able to set keys starting with 'system'
-        SystemSetting::setValue('system_debug_mode', true);
+        SystemSetting::setValue('inventory_batch_mode', true);
 
         $this->assertDatabaseHas('system_settings', [
-            'key' => 'system_debug_mode',
+            'key' => 'inventory_batch_mode',
             'value' => '1',
             'account_id' => $account->id,
             'type' => 'tenant'

@@ -44,8 +44,8 @@ require __DIR__.'/settings.php';
 
 // --- Public / Setup Routes (Web) ---
 Route::prefix('app')->group(function () {
-    Route::post('/setup/activate', [SetupController::class, 'activate'])->name('app.setup.activate');
-    Route::post('/activate', [ActivationController::class, 'activate'])->name('app.cloud.activate');
+    Route::post('/setup/activate', [SetupController::class, 'activate'])->middleware('throttle:auth')->name('app.setup.activate');
+    Route::post('/activate', [ActivationController::class, 'activate'])->middleware('throttle:auth')->name('app.cloud.activate');
 });
 
 
@@ -55,29 +55,31 @@ Route::middleware(['auth'])->group(function () {
     // Route::post('/select-account', [AccountSelectionController::class, 'store'])->name('auth.select-account.store');
 });
 
-Route::middleware(['auth', 'accounting.enabled'])->prefix('accounting')->group(function () {
-    Route::get('/', [AccountingDashboardController::class, 'index'])->name('accounting.dashboard')->middleware('can:accounting.dashboard.view');
+if (class_exists(\App\Http\Controllers\Accounting\AccountingDashboardController::class)) {
+    Route::middleware(['auth', 'licensed:accounting', 'accounting.enabled'])->prefix('accounting')->group(function () {
+        Route::get('/', [AccountingDashboardController::class, 'index'])->name('accounting.dashboard')->middleware('can:accounting.dashboard.view');
 
-    Route::get('/accounts', [ChartOfAccountController::class, 'index'])->name('accounting.accounts.index')->middleware('can:accounting.accounts.manage');
-    Route::post('/accounts', [ChartOfAccountController::class, 'store'])->name('accounting.accounts.store')->middleware('can:accounting.accounts.manage');
-    Route::put('/accounts/{account}', [ChartOfAccountController::class, 'update'])->name('accounting.accounts.update')->middleware('can:accounting.accounts.manage');
-    Route::delete('/accounts/{account}', [ChartOfAccountController::class, 'destroy'])->name('accounting.accounts.destroy')->middleware('can:accounting.accounts.manage');
+        Route::get('/accounts', [ChartOfAccountController::class, 'index'])->name('accounting.accounts.index')->middleware('can:accounting.accounts.manage');
+        Route::post('/accounts', [ChartOfAccountController::class, 'store'])->name('accounting.accounts.store')->middleware('can:accounting.accounts.manage');
+        Route::put('/accounts/{account}', [ChartOfAccountController::class, 'update'])->name('accounting.accounts.update')->middleware('can:accounting.accounts.manage');
+        Route::delete('/accounts/{account}', [ChartOfAccountController::class, 'destroy'])->name('accounting.accounts.destroy')->middleware('can:accounting.accounts.manage');
 
-    Route::get('/journal-entries', [JournalEntryController::class, 'index'])->name('accounting.journal-entries.index')->middleware('can:accounting.journal.manage');
-    Route::post('/journal-entries', [JournalEntryController::class, 'store'])->name('accounting.journal-entries.store')->middleware('can:accounting.journal.manage');
-    Route::post('/journal-entries/{entry}/post', [JournalEntryController::class, 'post'])->name('accounting.journal-entries.post')->middleware('can:accounting.journal.manage');
-    Route::post('/journal-entries/{entry}/void', [JournalEntryController::class, 'void'])->name('accounting.journal-entries.void')->middleware('can:accounting.journal.manage');
-    Route::post('/cash-movements', [CashMovementController::class, 'store'])->name('accounting.cash-movements.store')->middleware('can:accounting.cash.manage');
+        Route::get('/journal-entries', [JournalEntryController::class, 'index'])->name('accounting.journal-entries.index')->middleware('can:accounting.journal.manage');
+        Route::post('/journal-entries', [JournalEntryController::class, 'store'])->name('accounting.journal-entries.store')->middleware('can:accounting.journal.manage');
+        Route::post('/journal-entries/{entry}/post', [JournalEntryController::class, 'post'])->name('accounting.journal-entries.post')->middleware('can:accounting.journal.manage');
+        Route::post('/journal-entries/{entry}/void', [JournalEntryController::class, 'void'])->name('accounting.journal-entries.void')->middleware('can:accounting.journal.manage');
+        Route::post('/cash-movements', [CashMovementController::class, 'store'])->name('accounting.cash-movements.store')->middleware('can:accounting.cash.manage');
 
-    Route::get('/reports/balance-sheet', [AccountingReportController::class, 'balanceSheet'])->name('accounting.reports.balance-sheet')->middleware('can:accounting.reports.view');
-    Route::get('/reports/income-statement', [AccountingReportController::class, 'incomeStatement'])->name('accounting.reports.income-statement')->middleware('can:accounting.reports.view');
-    Route::get('/reports/trial-balance', [AccountingReportController::class, 'trialBalance'])->name('accounting.reports.trial-balance')->middleware('can:accounting.reports.view');
+        Route::get('/reports/balance-sheet', [AccountingReportController::class, 'balanceSheet'])->name('accounting.reports.balance-sheet')->middleware('can:accounting.reports.view');
+        Route::get('/reports/income-statement', [AccountingReportController::class, 'incomeStatement'])->name('accounting.reports.income-statement')->middleware('can:accounting.reports.view');
+        Route::get('/reports/trial-balance', [AccountingReportController::class, 'trialBalance'])->name('accounting.reports.trial-balance')->middleware('can:accounting.reports.view');
 
-    Route::post('/close-books', [BookClosingController::class, 'close'])->name('accounting.close-books')->middleware('can:accounting.close.manage');
-});
+        Route::post('/close-books', [BookClosingController::class, 'close'])->name('accounting.close-books')->middleware('can:accounting.close.manage');
+    });
+}
 
 // --- Pharmacy POS Web/Inertia Routes ---
-Route::middleware(['auth'])->prefix('app')->group(function () {
+Route::middleware(['auth', 'licensed'])->prefix('app')->group(function () {
 
     // Dashboard Analytics
     Route::get('dashboard/stats', [\App\Http\Controllers\Api\v1\DashboardController::class, 'stats'])->name('dashboard.stats')->middleware('can:dashboard.view');
@@ -126,9 +128,7 @@ Route::middleware(['auth'])->prefix('app')->group(function () {
     // Sync Operations
     Route::post('sync/push', [SyncController::class, 'push'])->name('sync.push');
     Route::post('sync/pull', [SyncController::class, 'pull'])->name('sync.pull');
-    Route::post('sync/receive', [CloudSyncController::class, 'receiveBatch'])->name('sync.receive');
-    Route::post('sync/receive', [CloudSyncController::class, 'receiveBatch'])->name('sync.receive');
-    Route::get('sync/serve', [CloudSyncController::class, 'serveBatch'])->name('sync.serve');
+    Route::post('sync/restore', [SyncController::class, 'restore'])->name('sync.restore');
 
     // Configuration Routes
     Route::get('config', [SystemSettingController::class, 'index'])->name('config.index')->middleware('can:settings.manage');

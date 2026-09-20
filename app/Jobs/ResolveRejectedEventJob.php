@@ -25,8 +25,18 @@ class ResolveRejectedEventJob implements ShouldQueue
         $this->event = $event;
     }
 
-    public function handle(ConflictResolutionService $resolutionService)
+    public function handle(ConflictResolutionService $resolutionService): void
     {
-        // Logic to try resolving and re-emitting event
+        $rejected = \Illuminate\Support\Facades\DB::table('event_rejections')
+            ->whereNull('resolved_at')
+            ->limit(10)
+            ->get();
+
+        foreach ($rejected as $entry) {
+            $resolutionService->flagForReview(
+                $entry->id,
+                'Auto-retry pending: ' . ($entry->rejection_reason ?? 'unknown')
+            );
+        }
     }
 }

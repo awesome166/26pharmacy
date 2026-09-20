@@ -13,7 +13,7 @@ class StoreInventoryService
      * Get optimized inventory for POS store page.
      * Prioritizes top-selling products and applies aggressive filtering.
      */
-    public function getStoreInventory(int $perPage = 50, ?string $search = null)
+    public function getStoreInventory(int $perPage = 50, ?string $search = null, ?string $branchId = null)
     {
         $accountId = app(\AbacPermissions\Tenancy\TenantContext::class)->getAccountId();
 
@@ -21,12 +21,16 @@ class StoreInventoryService
             return new \Illuminate\Pagination\LengthAwarePaginator([], 0, $perPage);
         }
 
-        // Cache key includes account, search, and page
-        $cacheKey = "store:inventory:account:{$accountId}:search:" . md5($search ?? 'all') . ":per_page:{$perPage}";
+        $branchId ??= app(DeviceContextService::class)->currentBranchId((string) $accountId);
+        $cacheVersion = Cache::get("store:version:account:{$accountId}:branch:{$branchId}", 1);
 
-        return Cache::remember($cacheKey, 300, function () use ($perPage, $search) {
+        $cacheKey = "store:inventory:account:{$accountId}:branch:{$branchId}:version:{$cacheVersion}:search:"
+            . md5($search ?? 'all') . ":per_page:{$perPage}";
+
+        return Cache::remember($cacheKey, 300, function () use ($perPage, $search, $branchId) {
             $query = Inventory::select([
                 'inventory.id',
+                'inventory.branch_id',
                 'inventory.drug_id',
                 'inventory.batch_id',
                 'inventory.quantity_on_hand',
@@ -36,11 +40,16 @@ class StoreInventoryService
                 'inventory.is_active'
             ])
             ->with([
-                'drug:id,name,strength,generic_name',
+                'drug:id,name,strength,generic_name,drug_class,is_prescription,is_controlled,is_narcotic',
                 'batch:id,expiry_date,is_active'
             ])
+            ->where('inventory.branch_id', $branchId)
             ->where('inventory.is_active', true)
-            ->where('inventory.quantity_on_hand', '>', 0);
+            ->where('inventory.quantity_on_hand', '>', 0)
+            ->whereHas('batch', fn ($query) => $query->where('is_active', true)
+                ->where(function ($query) {
+                    $query->whereNull('expiry_date')->orWhereDate('expiry_date', '>=', now()->toDateString());
+                }));
 
             // Apply search if provided
             if ($search) {
@@ -82,11 +91,10 @@ class StoreInventoryService
         $topSellingDrugIds = $this->getTopSellingDrugIds($accountId);
 
         if ($topSellingDrugIds->isNotEmpty()) {
-            // Order by top sellers first, then by name
-            // Quote UUIDs as strings for SQL compatibility
-            $quotedIds = $topSellingDrugIds->map(fn($id) => "'{$id}'")->implode(',');
+            $placeholders = $topSellingDrugIds->map(fn($i) => '?')->implode(',');
             $query->orderByRaw(
-                "CASE WHEN inventory.drug_id IN ({$quotedIds}) THEN 0 ELSE 1 END"
+                "CASE WHEN inventory.drug_id IN ({$placeholders}) THEN 0 ELSE 1 END",
+                $topSellingDrugIds->values()->toArray()
             );
         }
 
@@ -155,7 +163,7 @@ class StoreInventoryService
      * Invalidate cache for this account.
      * Call this after sales or inventory updates.
      */
-    public function invalidateCache(?string $accountId = null)
+    public function invalidateCache(?string $accountId = null, ?string $branchId = null)
     {
         $accountId = $accountId ?? app(\AbacPermissions\Tenancy\TenantContext::class)->getAccountId();
 
@@ -166,6 +174,13 @@ class StoreInventoryService
         // Clear all store-related caches for this account
         Cache::forget("store:stats:account:{$accountId}");
         Cache::forget("store:top_sellers:account:{$accountId}");
+        if ($branchId) {
+            Cache::increment("store:version:account:{$accountId}:branch:{$branchId}");
+        } else {
+            \App\Models\Device::withoutGlobalScope(\AbacPermissions\Tenancy\TenantScope::class)
+                ->where('account_id', $accountId)->whereNotNull('branch_id')->distinct()
+                ->pluck('branch_id')->each(fn ($id) => Cache::increment("store:version:account:{$accountId}:branch:{$id}"));
+        }
 
         // Clear paginated inventory caches (this is a pattern match, may need cache tagging)
         // For now, we'll rely on TTL expiration

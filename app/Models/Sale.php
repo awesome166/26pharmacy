@@ -17,9 +17,11 @@ class Sale extends Model
     protected $fillable = [
         'id',
         'account_id',
+        'branch_id',
         'user_id',
         'subtotal_amount',
         'tax_amount',
+        'tax_breakdown',
         'total_amount',
         'payment_type',
         'payment_metadata',
@@ -32,6 +34,7 @@ class Sale extends Model
     protected $casts = [
         'subtotal_amount' => 'decimal:2',
         'tax_amount' => 'decimal:2',
+        'tax_breakdown' => 'array',
         'total_amount' => 'decimal:2',
         'cash_received' => 'decimal:2',
         'change_amount' => 'decimal:2',

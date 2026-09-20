@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use AbacPermissions\Tenancy\TenantContext;
+
 /**
  * Service for managing the event ledger (The Source of Truth).
  */
@@ -17,36 +19,89 @@ class EventLedgerService
     {
         return \Illuminate\Support\Facades\DB::transaction(function () use ($eventData) {
             // Scope automatically handles account_id filtering via UsesTenant
-            $lastEvent = \App\Models\EventLedger::query()
+            $accountId = $eventData['account_id'] ?? app(TenantContext::class)->getAccountId();
+            $device = \App\Models\Device::where('device_id', $eventData['device_id'])
+                ->where('account_id', $accountId)
+                ->where('trust_status', 'active')
+                ->firstOrFail();
+
+            $lastEvent = \App\Models\EventLedger::withoutGlobalScope(\AbacPermissions\Tenancy\TenantScope::class)
+                ->where('device_id', $device->device_id)
                 ->orderBy('local_sequence', 'desc')
+                ->lockForUpdate()
                 ->first();
 
             $sequence = $lastEvent ? $lastEvent->local_sequence + 1 : 1;
             $previousHash = $lastEvent ? $lastEvent->event_hash : str_repeat('0', 64);
 
             $id = \Illuminate\Support\Str::ulid();
-            $hash = $this->computeHash($eventData['event_payload'], $previousHash);
+            // Database date serialization is second-precision; hash the same canonical value sent to the cloud.
+            $eventTime = now()->startOfSecond();
+            $hash = $this->computeEventHash([
+                'id' => (string) $id,
+                'account_id' => (string) $accountId,
+                'branch_id' => (string) $device->branch_id,
+                'device_id' => (string) $device->device_id,
+                'actor_user_id' => $eventData['actor_user_id'] ?? null,
+                'event_type' => $eventData['event_type'],
+                'event_version' => $eventData['event_version'] ?? 1,
+                'event_payload' => $eventData['event_payload'],
+                'local_sequence' => $sequence,
+                'event_time_utc' => $eventTime->toISOString(),
+                'previous_hash' => $previousHash,
+            ]);
+
+            $globalSequence = null;
+            if (config('sync.role') === 'parent') {
+                $state = \Illuminate\Support\Facades\DB::table('sync_global_state')
+                    ->where('id', 1)->lockForUpdate()->first();
+                $globalSequence = ((int) ($state->last_sequence ?? 0)) + 1;
+                \Illuminate\Support\Facades\DB::table('sync_global_state')
+                    ->where('id', 1)->update(['last_sequence' => $globalSequence]);
+            }
 
             \App\Models\EventLedger::create([
                 'id' => $id,
-                // 'account_id' => $eventData['account_id'], // Explicitly passed, but trait likely enforces/defaults
-                'device_id' => $eventData['device_id'],
+                'account_id' => $accountId,
+                'branch_id' => $device->branch_id,
+                'device_id' => $device->device_id,
                 'actor_user_id' => $eventData['actor_user_id'] ?? null,
                 'event_type' => $eventData['event_type'],
                 'event_payload' => $eventData['event_payload'], // Casts handle json encoding
                 'local_sequence' => $sequence,
-                'event_time_utc' => now(),
+                'event_time_utc' => $eventTime,
                 'event_hash' => $hash,
+                'previous_hash' => $previousHash,
+                'global_sequence' => $globalSequence,
+                'sync_status' => $globalSequence ? 'synced' : 'pending',
+                'synced_at' => $globalSequence ? now() : null,
+                'received_at_cloud' => $globalSequence ? now() : null,
             ]);
+
+            $eventObject = (object) [
+                'id' => $id,
+                'account_id' => $accountId,
+                'branch_id' => $device->branch_id,
+                'event_type' => $eventData['event_type'],
+                'event_payload' => $eventData['event_payload'],
+                'event_time_utc' => $eventTime,
+            ];
 
             // Dispatch job for processing
-            \App\Jobs\ProcessLedgerEventJob::dispatch((object) [
-                'id' => $id,
-                'event_type' => $eventData['event_type'],
-                'event_payload' => $eventData['event_payload']
-            ]);
+            if ($eventData['project_locally'] ?? true) {
+                \App\Jobs\ProcessLedgerEventJob::dispatch($eventObject);
+            } else {
+                \Illuminate\Support\Facades\DB::table('projected_events')->insertOrIgnore([
+                    'event_id' => (string) $id, 'projected_at' => now(),
+                ]);
+            }
+            if (config('sync.role') === 'child') {
+                \App\Jobs\SyncEventsToCloudJob::dispatch((string) $accountId, (string) $device->device_id);
+            } else {
+                \App\Events\SyncUpdateAvailable::dispatch((string) $accountId);
+            }
 
-            return (object) ['id' => $id, 'hash' => $hash];
+            return (object) ['id' => $id, 'hash' => $hash, 'global_sequence' => $globalSequence];
         });
     }
 
@@ -60,6 +115,11 @@ class EventLedgerService
     public function computeHash(array $payload, string $previousHash)
     {
         return hash('sha256', json_encode($payload, JSON_UNESCAPED_SLASHES) . $previousHash);
+    }
+
+    public function computeEventHash(array $event): string
+    {
+        return hash('sha256', json_encode($event, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
     }
 
     /**

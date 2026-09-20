@@ -19,19 +19,30 @@ class EventLedger extends Model
     protected $fillable = [
         'id',
         'account_id',
+        'branch_id',
         'device_id',
         'actor_user_id',
         'event_type',
+        'event_category',
+        'event_version',
         'event_payload',
         'local_sequence',
+        'global_sequence',
         'event_time_utc',
         'event_hash',
+        'previous_hash',
+        'sync_status',
+        'synced_at',
+        'received_at_cloud',
+        'metadata',
     ];
 
     protected $casts = [
         'event_payload' => 'array',
         'event_time_utc' => 'datetime',
         'received_at_cloud' => 'datetime',
+        'synced_at' => 'datetime',
+        'metadata' => 'array',
     ];
 
 

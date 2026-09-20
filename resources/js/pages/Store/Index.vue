@@ -15,12 +15,94 @@ import ReturnModal from '@/pages/Sales/ReturnModal.vue';
 
 import type { BreadcrumbItem } from '@/types';
 
-const props = defineProps({
-  inventory: Object,
-  filters: Object,
-  user: Object,
-  taxes: { type: Array, default: () => [] },
-  recentSales: { type: Array, default: () => [] },
+interface InventoryProduct {
+  id: string;
+  batch_id: string;
+  drug_id: string;
+  drug_name: string;
+  drug_class?: string | null;
+  selling_price: number | string;
+  quantity_on_hand: number;
+  expiry_date?: string | null;
+  lot_number?: string | null;
+  location?: string | null;
+  requires_prescription?: boolean;
+  is_controlled?: boolean;
+  is_narcotic?: boolean;
+  [key: string]: unknown;
+}
+
+interface PaginationLink {
+  url: string | null;
+  label: string;
+  active: boolean;
+}
+
+interface TaxRate {
+  tax_name: string;
+  percentage: number | string;
+  applicable_categories?: string[] | null;
+  minimum_taxable_amount?: number | string | null;
+  maximum_taxable_amount?: number | string | null;
+  calculation_order?: number | string;
+  is_compound?: boolean;
+}
+
+interface PaginatedInventory {
+  data: InventoryProduct[];
+  links: PaginationLink[];
+  [key: string]: unknown;
+}
+
+interface DosageData {
+  frequency: string;
+  full_frequency: string;
+  route: string;
+  measurement: string;
+  special: string[];
+  structured: { type: string; description: string };
+  duration: string;
+}
+
+interface CartItem {
+  id: string;
+  batch_id: string;
+  drug_id: string;
+  drug_name: string;
+  drug_class?: string | null;
+  quantity: number;
+  price: number;
+  total: number;
+  dosage_instructions: DosageData;
+  prescription_metadata: { reference: string; prescriber_name: string } | null;
+  requires_prescription?: boolean;
+  is_controlled?: boolean;
+  is_narcotic?: boolean;
+}
+
+interface StoreUser {
+  id: string;
+  name: string;
+  accounts?: Array<{ id: string }>;
+}
+
+interface SaleTaxBreakdown {
+  tax_name: string;
+  percentage: number | string;
+  tax_amount: number | string;
+}
+
+const props = withDefaults(defineProps<{
+  inventory?: PaginatedInventory;
+  filters?: { search?: string };
+  user?: StoreUser;
+  taxes?: TaxRate[];
+  recentSales?: any[];
+}>(), {
+  inventory: () => ({ data: [], links: [] }),
+  filters: () => ({}),
+  taxes: () => [],
+  recentSales: () => [],
 });
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -31,8 +113,8 @@ const breadcrumbs: BreadcrumbItem[] = [
 // --- Left Panel: Product List logic ---
 const search = ref(props.filters?.search || '');
 const scannerInput = ref('');
-const scannerRef = ref(null);
-const inventory = ref(props.inventory ?? { data: [], links: [] });
+const scannerRef = ref<HTMLInputElement | null>(null);
+const inventory = ref<PaginatedInventory>(props.inventory);
 const isLoading = ref(false);
 
 const fetchInventory = (url = '/app/store') => {
@@ -53,7 +135,7 @@ const fetchInventory = (url = '/app/store') => {
 };
 
 // --- Tax Logic ---
-const activeTaxes = ref(props.taxes ?? []);
+const activeTaxes = ref<TaxRate[]>(props.taxes);
 
 onMounted(() => {
   // No extra requests needed — all initial data comes from Inertia props
@@ -64,13 +146,20 @@ watch(search, debounce((value) => {
 }, 150)); // Reduced from 300ms for better responsiveness
 
 // --- Cart Logic ---
-const cart = ref<any[]>([]);
-const selectedProduct = ref<any>(null);
+const cart = ref<CartItem[]>([]);
+const selectedProduct = ref<InventoryProduct | null>(null);
 const addToCartOpen = ref(false);
 const editCartOpen = ref(false);
 const editingCartIndex = ref<number | null>(null);
-const qtyForm = ref({
+const qtyForm = ref<{
+  quantity: number;
+  prescription_reference: string;
+  prescriber_name: string;
+  dosage_instructions: DosageData;
+}>({
   quantity: 1,
+  prescription_reference: '',
+  prescriber_name: '',
   dosage_instructions: {
     frequency: '',
     full_frequency: '',
@@ -82,10 +171,12 @@ const qtyForm = ref({
   }
 });
 
-const openAddToCart = (product) => {
+const openAddToCart = (product: InventoryProduct) => {
   selectedProduct.value = product;
   qtyForm.value = {
     quantity: 1,
+    prescription_reference: '',
+    prescriber_name: '',
     dosage_instructions: {
       frequency: '',
       full_frequency: '',
@@ -100,42 +191,52 @@ const openAddToCart = (product) => {
 };
 
 const addToCart = () => {
-  if (!selectedProduct.value) return;
+  const product = selectedProduct.value;
+  if (!product) return;
 
-  const existingindex = cart.value.findIndex(item => item.batch_id === selectedProduct.value.batch_id);
+  const existingindex = cart.value.findIndex(item => item.batch_id === product.batch_id);
 
   if (existingindex >= 0) {
     cart.value[existingindex].quantity += qtyForm.value.quantity;
     cart.value[existingindex].total = cart.value[existingindex].quantity * cart.value[existingindex].price;
   } else {
     // Use selling_price from backend, fallback to 0 if missing.
-    const productPrice = selectedProduct.value.selling_price || 0;
+    const productPrice = Number(product.selling_price || 0);
 
     cart.value.push({
-      drug_name: selectedProduct.value.drug_name,
-      batch_id: selectedProduct.value.batch_id,
-      drug_id: selectedProduct.value.drug_id,
-      id: selectedProduct.value.id, // Ensure ID is passed for consistency
+      drug_name: product.drug_name,
+      batch_id: product.batch_id,
+      drug_id: product.drug_id,
+      id: product.id, // Ensure ID is passed for consistency
       quantity: qtyForm.value.quantity,
       price: productPrice,
       total: productPrice * qtyForm.value.quantity,
       dosage_instructions: qtyForm.value.dosage_instructions,
-      drug_class: selectedProduct.value.drug_class, // Important for tax calc
+      drug_class: product.drug_class, // Important for tax calc
+      requires_prescription: product.requires_prescription,
+      is_controlled: product.is_controlled,
+      is_narcotic: product.is_narcotic,
+      prescription_metadata: qtyForm.value.prescription_reference ? {
+        reference: qtyForm.value.prescription_reference,
+        prescriber_name: qtyForm.value.prescriber_name,
+      } : null,
       // inventory_id: selectedProduct.value.id
     });
   }
   addToCartOpen.value = false;
 };
 
-const removeFromCart = (index) => {
+const removeFromCart = (index: number) => {
   cart.value.splice(index, 1);
 };
 
-const openEditCart = (index) => {
+const openEditCart = (index: number) => {
   editingCartIndex.value = index;
   const item = cart.value[index];
   qtyForm.value = {
     quantity: item.quantity,
+    prescription_reference: item.prescription_metadata?.reference || '',
+    prescriber_name: item.prescription_metadata?.prescriber_name || '',
     dosage_instructions: item.dosage_instructions || {
       frequency: '',
       full_frequency: '',
@@ -155,6 +256,10 @@ const updateCartItem = () => {
   const item = cart.value[editingCartIndex.value];
   item.quantity = qtyForm.value.quantity;
   item.dosage_instructions = qtyForm.value.dosage_instructions;
+  item.prescription_metadata = qtyForm.value.prescription_reference ? {
+    reference: qtyForm.value.prescription_reference,
+    prescriber_name: qtyForm.value.prescriber_name,
+  } : null;
   item.total = item.quantity * item.price;
 
   editCartOpen.value = false;
@@ -169,22 +274,33 @@ const subtotal = computed(() => {
 // Dynamic Tax Calculation
 const taxDetails = computed(() => {
   let totalTax = 0;
-  const taxesApplied = {}; // { 'Tax Name (10%)': amount }
+  const taxesApplied: Record<string, number> = {}; // { 'Tax Name (10%)': amount }
 
   cart.value.forEach(item => {
-    activeTaxes.value.forEach(tax => {
+    let lineTax = 0;
+    [...activeTaxes.value]
+      .sort((a: TaxRate, b: TaxRate) => Number(a.calculation_order || 0) - Number(b.calculation_order || 0))
+      .forEach(tax => {
       let applies = false;
       // Case 1: No categories defined OR contains 'all' = Applies to everything
       if (!tax.applicable_categories || tax.applicable_categories.length === 0 || tax.applicable_categories.includes('all')) {
         applies = true;
       }
       // Case 2: Categories defined = Check match
-      else if (item.drug_class && tax.applicable_categories.includes(item.drug_class)) {
+      else if (item.drug_class && tax.applicable_categories.some((category: string) =>
+        String(category).toLowerCase() === String(item.drug_class).toLowerCase())) {
         applies = true;
       }
 
+      const minimum = tax.minimum_taxable_amount == null ? null : Number(tax.minimum_taxable_amount);
+      const maximum = tax.maximum_taxable_amount == null ? null : Number(tax.maximum_taxable_amount);
+      if (minimum !== null && item.total < minimum) applies = false;
+      if (maximum !== null && item.total > maximum) applies = false;
+
       if (applies) {
-        const taxForLine = item.total * (tax.percentage / 100);
+        const taxableBase = item.total + (tax.is_compound ? lineTax : 0);
+        const taxForLine = taxableBase * (Number(tax.percentage) / 100);
+        lineTax += taxForLine;
         totalTax += taxForLine;
 
         const key = `${tax.tax_name} (${Number(tax.percentage)}%)`;
@@ -376,7 +492,7 @@ const finalizeSale = () => {
 
   // Prepare payload matching FinalizeSaleRequest
   const payload = {
-    account_id: props.user?.accounts[0]?.id, // Use safe navigation
+    account_id: props.user?.accounts?.[0]?.id, // Use safe navigation
     user_id: props.user?.id,
     subtotal: subtotal.value, // Used computed subtotal not totalAmount
     tax_amount: taxAmount.value,
@@ -396,7 +512,8 @@ const finalizeSale = () => {
       price: item.price,
       inventory_id: item.id,
       drug_id: item.drug_id,
-      dosage_instructions: item.dosage_instructions
+      dosage_instructions: item.dosage_instructions,
+      prescription_metadata: item.prescription_metadata,
     }))
   };
 
@@ -414,19 +531,22 @@ const finalizeSale = () => {
       return res.json();
     })
     .then((data) => {
+      const savedSale = data?.sale || {};
       // Store sale data for receipt
       lastSaleData.value = {
         items: [...cart.value],
-        subtotal: subtotal.value,
-        taxAmount: taxAmount.value,
-        taxDetails: { ...taxDetails.value.breakdown }, // Snapshot tax details
-        totalAmount: totalAmount.value,
+        subtotal: Number(savedSale.subtotal_amount ?? subtotal.value),
+        taxAmount: Number(savedSale.tax_amount ?? taxAmount.value),
+        taxDetails: Object.fromEntries((savedSale.tax_breakdown || []).map((tax: SaleTaxBreakdown) => [
+          `${tax.tax_name} (${Number(tax.percentage)}%)`, Number(tax.tax_amount),
+        ])),
+        totalAmount: Number(savedSale.total_amount ?? totalAmount.value),
         totalReturnedAmount: 0,
         paymentType: paymentType.value,
-        cashReceived: cashReceived.value,
-        change: changeAmount.value,
+        cashReceived: Number(savedSale.cash_received ?? cashReceived.value),
+        change: Number(savedSale.change_amount ?? changeAmount.value),
         date: new Date().toLocaleString(),
-        saleId: data?.id || data?.event_id || 'N/A',
+        saleId: savedSale.id || data?.event_id || 'N/A',
         servedBy: props.user?.name || 'Staff',
         customer_name: payload.customer_name,
         customer_phone: payload.customer_phone,
@@ -601,7 +721,7 @@ const printReceipt = () => {
       </div>
 
       <div class="items">
-        ${lastSaleData.value?.items.map(item => `
+        ${lastSaleData.value?.items.map((item: CartItem) => `
           <div class="item">
             <div class="item-name">${item.drug_name}</div>
             <div class="row">
@@ -684,10 +804,10 @@ const printReceipt = () => {
   printWindow.document.close();
 };
 
-const formatCurrency = (val: string | number | bigint) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'GHS' }).format(val);
-const formatDate = (dateString: string | number | Date) => {
+const formatCurrency = (val: unknown) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'GHS' }).format(Number(val ?? 0));
+const formatDate = (dateString: unknown) => {
   if (!dateString) return 'N/A';
-  return new Date(dateString).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  return new Date(String(dateString)).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 };
 </script>
 
@@ -1026,8 +1146,14 @@ const formatDate = (dateString: string | number | Date) => {
               <DosageSelector v-model="qtyForm.dosage_instructions" />
             </div>
           </div>
+          <div v-if="selectedProduct?.requires_prescription || selectedProduct?.is_controlled || selectedProduct?.is_narcotic" class="grid gap-3 rounded-md border p-3">
+            <Label for="prescription-reference">Prescription reference</Label>
+            <Input id="prescription-reference" v-model="qtyForm.prescription_reference" :required="selectedProduct?.is_controlled || selectedProduct?.is_narcotic" />
+            <Label for="prescriber-name">Prescriber name</Label>
+            <Input id="prescriber-name" v-model="qtyForm.prescriber_name" />
+          </div>
           <div class="text-center text-sm font-bold mt-2">
-            Estimated: {{ formatCurrency((selectedProduct?.selling_price * qtyForm.quantity)) }}
+            Estimated: {{ formatCurrency(Number(selectedProduct?.selling_price ?? 0) * qtyForm.quantity) }}
             <!-- Mock Calculation Display -->
           </div>
         </div>

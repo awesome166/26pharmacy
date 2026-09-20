@@ -14,11 +14,14 @@ class FinalizeSaleRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'account_id' => 'required|exists:accounts,id',
-            'user_id' => 'required|exists:users,id',
-            'tax_amount' => 'required|numeric|min:0',
-            'subtotal' => 'required|numeric|min:0',
-            'total_amount' => 'required|numeric|min:0',
+            // Totals, prices, tenant and actor are accepted for backwards
+            // compatibility only; SaleService derives authoritative values.
+            'account_id' => 'nullable|ulid',
+            'user_id' => 'nullable|ulid',
+            'device_id' => 'nullable|ulid',
+            'tax_amount' => 'nullable|numeric|min:0',
+            'subtotal' => 'nullable|numeric|min:0',
+            'total_amount' => 'nullable|numeric|min:0',
             'payment_type' => 'required|string|in:cash,card,momo',
             'cash_received' => 'nullable|numeric|min:0|required_if:payment_type,cash',
             'change_amount' => 'nullable|numeric|min:0',
@@ -28,11 +31,12 @@ class FinalizeSaleRequest extends FormRequest
             'customer_email' => 'nullable|email|max:255',
             'customer_dob' => 'nullable|date',
             'items' => 'required|array|min:1',
-            'items.*.batch_id' => 'required|ulid|exists:batches,id',
-            'items.*.drug_id' => 'required|ulid|exists:drugs,id',
+            'items.*.batch_id' => 'nullable|ulid',
+            'items.*.drug_id' => 'nullable|ulid',
             'items.*.quantity' => 'required|integer|min:1',
             'items.*.inventory_id' => 'required|ulid|exists:inventory,id',
-            'items.*.price' => 'required|numeric|min:0',
+            'items.*.price' => 'nullable|numeric|min:0',
+            'items.*.prescription_metadata' => 'nullable|array',
             'items.*.dosage_instructions' => 'nullable|array',
         ];
     }

@@ -16,12 +16,23 @@ class ConflictResolutionService
      */
     public function resolveStockConflict(string $batchId, array $conflictingEvents)
     {
-        // Simple LWW (Last Write Wins) resolution logic
-        usort($conflictingEvents, fn($a, $b) => strcmp($b->event_time_utc, $a->event_time_utc));
+        $additiveTypes = ['STOCK_ADJUSTED', 'STOCK_TRANSFERRED', 'SALE_FINALIZED', 'SALE_RETURNED'];
+        $types = collect($conflictingEvents)->map(fn ($event) => is_object($event)
+            ? ($event->event_type ?? null) : ($event['event_type'] ?? null));
+        if ($types->every(fn ($type) => in_array($type, $additiveTypes, true))) {
+            // Deltas commute; every valid event must be projected exactly once.
+            return;
+        }
 
-        // Mark others as superseded or rejected
-        foreach (array_slice($conflictingEvents, 1) as $superseded) {
-            $this->flagForReview($superseded->id, "Superseded by later event on same batch.");
+        usort($conflictingEvents, function ($a, $b) {
+            $timeA = strtotime(is_string($a->event_time_utc ?? $a['event_time_utc'] ?? '') ? ($a->event_time_utc ?? $a['event_time_utc']) : 'now');
+            $timeB = strtotime(is_string($b->event_time_utc ?? $b['event_time_utc'] ?? '') ? ($b->event_time_utc ?? $b['event_time_utc']) : 'now');
+            return $timeB <=> $timeA;
+        });
+
+        foreach ($conflictingEvents as $superseded) {
+            $id = is_object($superseded) ? $superseded->id : $superseded['id'];
+            $this->flagForReview($id, "Concurrent absolute stock state requires manual reconciliation for batch {$batchId}.");
         }
     }
 

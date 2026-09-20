@@ -30,7 +30,12 @@ class StoreController extends Controller
         $perPage = (int) $request->input('per_page', 50);
         $search = $request->input('search');
 
-        $inventory = $this->storeInventoryService->getStoreInventory($perPage, $search);
+        $accountId = (string) app(\AbacPermissions\Tenancy\TenantContext::class)->getAccountId();
+        $device = app(\App\Services\DeviceContextService::class)->currentDevice(
+            $accountId,
+            $request->header('X-Device-Id'),
+        );
+        $inventory = $this->storeInventoryService->getStoreInventory($perPage, $search, (string) $device->branch_id);
 
         // Flatten nested drug/batch relations into flat fields for the frontend
         $transformedInventory = $inventory->through(function ($item) {
@@ -47,6 +52,9 @@ class StoreController extends Controller
                 'location' => $item->location,
                 'drug_class' => $item->drug?->drug_class,
                 'is_active' => $item->is_active,
+                'requires_prescription' => (bool) $item->drug?->is_prescription,
+                'is_controlled' => (bool) $item->drug?->is_controlled,
+                'is_narcotic' => (bool) $item->drug?->is_narcotic,
             ];
         });
 
@@ -58,17 +66,21 @@ class StoreController extends Controller
         }
 
         // Get account ID for tax scoping
-        $accountId = app(\AbacPermissions\Tenancy\TenantContext::class)->getAccountId();
+        $taxes = collect();
+        if ((bool) \App\Models\SystemSetting::getValue('sales_add_tax', false)) {
+            $jurisdiction = \Illuminate\Support\Facades\DB::table('branches')
+                ->where('branch_id', $device->branch_id)->value('tax_jurisdiction') ?: 'Default';
+            $taxes = app(\App\Services\TaxService::class)->activeRates($jurisdiction);
+        }
 
         // Render with all data as Inertia props (single request)
         return Inertia::render('Store/Index', [
             'inventory' => $transformedInventory,
             'filters' => $request->only(['search', 'per_page']),
             'user' => $request->user(),
-            'taxes' => TaxRate::where('is_active', true)
-                ->where('account_id', $accountId)
-                ->get(),
-            'recentSales' => $this->saleService->getRecentSales(10),
+            'taxes' => $taxes,
+            'recentSales' => $this->saleService->getRecentSales(10, (string) $device->branch_id),
+            'branchId' => (string) $device->branch_id,
         ]);
     }
 

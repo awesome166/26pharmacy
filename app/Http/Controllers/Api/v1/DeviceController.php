@@ -3,10 +3,12 @@
 namespace App\Http\Controllers\Api\v1;
 
 use App\Http\Controllers\Controller;
+use App\Models\Device;
 use App\Services\DeviceService;
 use App\Services\AuditService;
 use App\Http\Requests\Device\RegisterDeviceRequest;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use App\Jobs\AuditEventJob;
 use Inertia\Inertia;
 
@@ -21,9 +23,58 @@ class DeviceController extends Controller
         $this->auditService = $auditService;
     }
 
+    public function index(Request $request)
+    {
+        $devices = Device::query()
+            ->orderBy('created_at', 'desc')
+            ->paginate((int) $request->input('per_page', 15));
+
+        if ($request->wantsJson()) {
+            return response()->json(['data' => $devices]);
+        }
+
+        return Inertia::render('Devices/Index', ['devices' => $devices]);
+    }
+
+    public function show(Request $request, string $deviceId)
+    {
+        $device = Device::findOrFail($deviceId);
+
+        if ($request->wantsJson()) {
+            return response()->json(['data' => $device]);
+        }
+
+        return Inertia::render('Devices/Show', ['device' => $device]);
+    }
+
+    public function update(Request $request, string $deviceId)
+    {
+        $device = Device::findOrFail($deviceId);
+
+        $validated = $request->validate([
+            'device_name' => 'nullable|string|max:255',
+            'device_type' => 'nullable|string|max:255',
+            'trust_status' => 'nullable|string|in:active,revoked,pending',
+            'serial_number' => 'nullable|string|max:255',
+            'mac_address' => 'nullable|string|max:255',
+        ]);
+
+        $device->update($validated);
+
+        if ($request->wantsJson()) {
+            return response()->json(['data' => $device->fresh()]);
+        }
+
+        return redirect()->back()->with('success', 'Device updated');
+    }
+
     public function register(RegisterDeviceRequest $request)
     {
+        $accountId = (string) app(\AbacPermissions\Tenancy\TenantContext::class)->getAccountId();
+        abort_unless(\Illuminate\Support\Facades\DB::table('branches')->where('branch_id', $request->branch_id)
+            ->where('account_id', $accountId)->where('is_active', true)->exists(), 422, 'Invalid branch.');
         $device = $this->deviceService->registerDevice(
+            $accountId,
             $request->branch_id,
             $request->validated()
         );

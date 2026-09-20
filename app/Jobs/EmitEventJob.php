@@ -25,8 +25,17 @@ class EmitEventJob implements ShouldQueue
         $this->eventData = $eventData;
     }
 
-    public function handle(EventLedgerService $ledger)
+    public function handle(EventLedgerService $ledger): void
     {
-        // Logic to persist event and dispatch further jobs (ProcessLedgerEventJob, SyncEventsToCloudJob)
+        $result = $ledger->emitEvent($this->eventData);
+
+        SyncEventsToCloudJob::dispatch(
+            $this->eventData['account_id'] ?? null,
+            $this->eventData['device_id'] ?? null,
+        );
+
+        if (isset($this->eventData['event_payload']['batch_id'])) {
+            ResolveRejectedEventJob::dispatch($result);
+        }
     }
 }

@@ -57,10 +57,13 @@ class BatchController extends Controller
         ]);
         $accountId = (string) app(\AbacPermissions\Tenancy\TenantContext::class)->getAccountId();
         abort_if(!$accountId, 422, 'Select an account before creating batches.');
+        $device = \App\Models\Device::where('account_id', $accountId)->where('trust_status', 'active')->firstOrFail();
 
-        $batch = DB::transaction(function () use ($validated, $request, $accountId) {
+        $batch = DB::transaction(function () use ($validated, $request, $accountId, $device) {
             $batch = Batch::create([
                 'id' => (string) \Illuminate\Support\Str::ulid(),
+                'account_id' => $accountId,
+                'branch_id' => $device->branch_id,
                 'drug_id' => $validated['drug_id'],
                 'expiry_date' => $validated['expiry_date'],
                 'lot_number' => $validated['lot_number'],
@@ -69,7 +72,7 @@ class BatchController extends Controller
                 'manufacturer' => $validated['manufacturer'] ?? $validated['supplier'],
                 'cost_price' => $validated['cost_price'],
                 'quantity' => $validated['quantity'],
-                'quantity_recieved' => $validated['quantity'],
+                'quantity_received' => $validated['quantity'],
                 'storage_location' => $validated['location'] ?? null,
                 'is_active' => true,
             ]);
@@ -82,6 +85,7 @@ class BatchController extends Controller
 
                 $existing = Inventory::query()
                     ->where('account_id', $accountId)
+                    ->where('branch_id', $device->branch_id)
                     ->where('drug_id', $batch->drug_id)
                     ->where('batch_id', $batch->id)
                     ->where('location', $location)
@@ -98,6 +102,7 @@ class BatchController extends Controller
                     Inventory::create([
                         'id' => (string) \Illuminate\Support\Str::ulid(),
                         'account_id' => $accountId,
+                        'branch_id' => $device->branch_id,
                         'drug_id' => $batch->drug_id,
                         'batch_id' => $batch->id,
                         'selling_price' => $sellingPrice,
@@ -109,6 +114,19 @@ class BatchController extends Controller
                     ]);
                 }
             }
+
+            $inventory = Inventory::where('account_id', $accountId)->where('branch_id', $device->branch_id)
+                ->where('batch_id', $batch->id)->first();
+            app(\App\Services\EventLedgerService::class)->emitEvent([
+                'account_id' => $accountId, 'device_id' => $device->device_id,
+                'actor_user_id' => $request->user()?->id, 'event_type' => 'BATCH_REGISTERED',
+                'project_locally' => false,
+                'event_payload' => [
+                    'batch_id' => $batch->id, 'inventory_id' => $inventory?->id, 'drug_id' => $batch->drug_id,
+                    'expiry_date' => optional($batch->expiry_date)->toDateString(), 'initial_quantity' => $batch->quantity,
+                    'selling_price' => $inventory?->selling_price ?? 0, 'cost_price' => $batch->cost_price,
+                ],
+            ]);
 
             return $batch;
         });
@@ -136,17 +154,22 @@ class BatchController extends Controller
             'location' => 'nullable|string|max:255',
         ]);
 
-        $batch->update([
-            'drug_id' => $validated['drug_id'],
-            'expiry_date' => $validated['expiry_date'],
-            'lot_number' => $validated['lot_number'],
-            'name' => $validated['name'] ?? null,
-            'supplier' => $validated['supplier'],
-            'manufacturer' => $validated['manufacturer'] ?? $validated['supplier'],
-            'cost_price' => $validated['cost_price'],
-            'quantity' => $validated['quantity'],
-            'storage_location' => $validated['location'] ?? $batch->storage_location,
-        ]);
+        DB::transaction(function () use ($batch, $validated, $request) {
+            $batch->update([
+                'drug_id' => $validated['drug_id'],
+                'expiry_date' => $validated['expiry_date'],
+                'lot_number' => $validated['lot_number'],
+                'name' => $validated['name'] ?? null,
+                'supplier' => $validated['supplier'],
+                'manufacturer' => $validated['manufacturer'] ?? $validated['supplier'],
+                'cost_price' => $validated['cost_price'],
+                'quantity' => $validated['quantity'],
+                'storage_location' => $validated['location'] ?? $batch->storage_location,
+            ]);
+            app(\App\Services\DomainEventService::class)->record(
+                'BATCH_UPSERTED', ['batch' => $batch->fresh()->attributesToArray()], $request->user()?->id, $batch->branch_id,
+            );
+        });
 
         app(StoreInventoryService::class)->invalidateCache((string) app(\AbacPermissions\Tenancy\TenantContext::class)->getAccountId());
 
@@ -157,7 +180,7 @@ class BatchController extends Controller
         return back()->with('success', 'Batch updated');
     }
 
-    public function destroy(Batch $batch)
+    public function destroy(\Illuminate\Http\Request $request, Batch $batch)
     {
         if ($batch->inventories()->where('quantity_on_hand', '>', 0)->exists()) {
             return response()->json([
@@ -165,7 +188,12 @@ class BatchController extends Controller
             ], 422);
         }
 
-        $batch->delete();
+        DB::transaction(function () use ($batch, $request) {
+            $batch->delete();
+            app(\App\Services\DomainEventService::class)->record(
+                'BATCH_DELETED', ['id' => (string) $batch->id], $request->user()?->id, $batch->branch_id,
+            );
+        });
 
         app(StoreInventoryService::class)->invalidateCache((string) app(\AbacPermissions\Tenancy\TenantContext::class)->getAccountId());
 

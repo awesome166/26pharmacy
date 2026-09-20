@@ -367,6 +367,10 @@ class AccountingService
 
     public function recordPosSale(Sale $sale, string $accountId, ?string $userId = null): ?JournalEntry
     {
+        if ($existing = JournalEntry::query()->where('account_id', $accountId)
+            ->where('reference', 'SALE:'.$sale->id)->first()) {
+            return $existing;
+        }
         if ((float) $sale->total_amount <= 0) {
             return null;
         }
@@ -450,6 +454,10 @@ class AccountingService
 
     public function recordSaleReturn(SalesReturn $salesReturn, string $accountId, ?string $userId = null): ?JournalEntry
     {
+        if ($existing = JournalEntry::query()->where('account_id', $accountId)
+            ->where('reference', 'RETURN:'.$salesReturn->id)->first()) {
+            return $existing;
+        }
         $refundTotal = round((float) ($salesReturn->refund_amount ?? 0), 2);
         if ($refundTotal <= 0) {
             return null;
@@ -747,7 +755,10 @@ class AccountingService
                 continue;
             }
 
-            $unitCost = (float) ($item->inventory?->cost_price ?? 0);
+            $unitCost = (float) ($item->unit_cost ?? 0);
+            if ($unitCost <= 0) {
+                $unitCost = (float) ($item->inventory?->cost_price ?? 0);
+            }
             if ($unitCost <= 0) {
                 $unitCost = (float) ($item->batch?->cost_price ?? 0);
             }
@@ -767,7 +778,10 @@ class AccountingService
                 continue;
             }
 
-            $unitCost = (float) ($item->saleItem->inventory?->cost_price ?? 0);
+            $unitCost = (float) ($item->saleItem->unit_cost ?? 0);
+            if ($unitCost <= 0) {
+                $unitCost = (float) ($item->saleItem->inventory?->cost_price ?? 0);
+            }
             if ($unitCost <= 0) {
                 $unitCost = (float) ($item->saleItem->batch?->cost_price ?? 0);
             }

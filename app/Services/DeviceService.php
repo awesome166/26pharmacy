@@ -14,19 +14,22 @@ class DeviceService
      * @param array $data
      * @return object
      */
-    public function registerDevice(string $accountid, array $data)
+    public function registerDevice(string $accountid, string $branchId, array $data)
     {
         $id = \Illuminate\Support\Str::ulid();
+        $plainToken = \Illuminate\Support\Str::random(64);
         \Illuminate\Support\Facades\DB::table('devices')->insert([
             'device_id' => $id,
             'account_id' => $accountid,
+            'branch_id' => $branchId,
             'device_name' => $data['device_name'] ?? null,
             'trust_status' => 'active',
+            'sync_token_hash' => hash('sha256', $plainToken),
             'created_at' => now(),
             'updated_at' => now(),
         ]);
 
-        return (object) ['device_id' => $id];
+        return (object) ['device_id' => $id, 'sync_token' => $plainToken];
     }
 
     /**

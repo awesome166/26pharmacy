@@ -10,9 +10,33 @@ import { Plus, Edit, Trash2 } from 'lucide-vue-next';
 import TaxModal from './TaxModal.vue';
 import type { BreadcrumbItem } from '@/types';
 
-const props = defineProps({
-  taxes: Object, // Paginator
-  filters: Object,
+interface TaxRate {
+  id: string;
+  tax_name: string;
+  jurisdiction: string;
+  percentage: number | string;
+  tax_type: string;
+  effective_from: string;
+  effective_to?: string | null;
+  is_active: boolean;
+  description?: string | null;
+  account?: { name: string } | null;
+  [key: string]: unknown;
+}
+
+interface TaxPaginator {
+  data: TaxRate[];
+  links: unknown[];
+  prev_page_url?: string | null;
+  next_page_url?: string | null;
+}
+
+const props = withDefaults(defineProps<{
+  taxes?: TaxPaginator;
+  filters?: { search?: string };
+}>(), {
+  taxes: () => ({ data: [], links: [] }),
+  filters: () => ({}),
 });
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -22,7 +46,7 @@ const breadcrumbs: BreadcrumbItem[] = [
 
 const search = ref(props.filters?.search || '');
 const showModal = ref(false);
-const selectedTax = ref(null);
+const selectedTax = ref<TaxRate | null>(null);
 
 watch(search, debounce((val) => {
   router.get('/app/taxes', { search: val }, { preserveState: true, preserveScroll: true });
@@ -37,12 +61,12 @@ const openCreateModal = () => {
   showModal.value = true;
 };
 
-const openEditModal = (tax) => {
+const openEditModal = (tax: TaxRate) => {
   selectedTax.value = tax;
   showModal.value = true;
 };
 
-const deleteTax = (id) => {
+const deleteTax = (id: string) => {
   if (confirm('Are you sure you want to delete this tax rate?')) {
     router.delete(`/app/taxes/${id}`);
   }
@@ -51,6 +75,10 @@ const deleteTax = (id) => {
 const closeModal = () => {
   showModal.value = false;
   selectedTax.value = null;
+};
+
+const goToPage = (url?: string | null) => {
+  if (url) router.get(url);
 };
 </script>
 
@@ -122,10 +150,10 @@ const closeModal = () => {
 
       <!-- Pagination simple wrapper -->
       <div class="flex items-center justify-end space-x-2 py-4" v-if="taxes.links.length > 3">
-        <Button variant="outline" size="sm" :disabled="!taxes.prev_page_url" @click="router.get(taxes.prev_page_url)">
+        <Button variant="outline" size="sm" :disabled="!taxes.prev_page_url" @click="goToPage(taxes.prev_page_url)">
           Previous
         </Button>
-        <Button variant="outline" size="sm" :disabled="!taxes.next_page_url" @click="router.get(taxes.next_page_url)">
+        <Button variant="outline" size="sm" :disabled="!taxes.next_page_url" @click="goToPage(taxes.next_page_url)">
           Next
         </Button>
       </div>

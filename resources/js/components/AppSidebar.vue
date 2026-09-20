@@ -29,6 +29,7 @@ import {
     Calculator, // For Accounting
 } from 'lucide-vue-next';
 import AppLogo from './AppLogo.vue';
+import SyncStatus from './SyncStatus.vue';
 import { computed } from 'vue';
 import { usePermissions } from '@/composables/usePermissions';
 
@@ -251,8 +252,9 @@ const footerNavItems: NavItem[] = [];
             <NavMain :items="mainNavItems" />
         </SidebarContent>
 
-        <SidebarFooter class="bg-slate-900 text-white">
+        <SidebarFooter class="bg-slate-900 text-white p-0">
             <NavFooter :items="footerNavItems" />
+            <SyncStatus />
             <NavUser />
         </SidebarFooter>
     </Sidebar>

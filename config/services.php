@@ -35,4 +35,12 @@ return [
         ],
     ],
 
+    'sync' => [
+        'role' => env('SYNC_ROLE', 'child'),
+        'client_id' => env('SYNC_CLIENT_ID'),
+        'api_token' => env('SYNC_API_TOKEN'),
+        'cloud_url' => env('CLOUD_URL'),
+        'batch_size' => env('SYNC_BATCH_SIZE', 100),
+    ],
+
 ];

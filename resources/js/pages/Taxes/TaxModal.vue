@@ -8,20 +8,54 @@ import { Switch } from '@/components/ui/switch';
 import { useForm } from '@inertiajs/vue3';
 import { watch, ref } from 'vue';
 
-const props = defineProps({
-  open: Boolean,
-  tax: Object,
-});
+interface TaxRate {
+  id: string;
+  tax_name: string;
+  jurisdiction: string;
+  percentage: number | string;
+  minimum_taxable_amount?: number | string | null;
+  maximum_taxable_amount?: number | string | null;
+  calculation_order?: number | string;
+  is_compound?: boolean;
+  tax_type: string;
+  effective_from: string;
+  effective_to?: string | null;
+  is_active: boolean;
+  description?: string | null;
+  applicable_categories?: string[] | null;
+}
+
+interface TaxForm {
+  tax_name: string;
+  jurisdiction: string;
+  percentage: number;
+  minimum_taxable_amount: number | string;
+  maximum_taxable_amount: number | string;
+  calculation_order: number;
+  is_compound: boolean;
+  tax_type: string;
+  effective_from: string;
+  effective_to: string;
+  is_active: boolean;
+  description: string;
+  applicable_categories: string;
+}
+
+const props = defineProps<{ open: boolean; tax?: TaxRate | null }>();
 
 const emit = defineEmits(['close']);
 
-const form = useForm({
+const form = useForm<TaxForm>({
   tax_name: '',
   jurisdiction: 'Default',
   percentage: 0,
+  minimum_taxable_amount: '',
+  maximum_taxable_amount: '',
+  calculation_order: 0,
+  is_compound: false,
   tax_type: 'sales',
   effective_from: new Date().toISOString().split('T')[0],
-  effective_to: null,
+  effective_to: '',
   is_active: true,
   description: '',
   applicable_categories: '',
@@ -35,18 +69,26 @@ watch(() => props.open, (newVal) => {
     if (props.tax) {
       form.tax_name = props.tax.tax_name;
       form.jurisdiction = props.tax.jurisdiction;
-      form.percentage = parseFloat(props.tax.percentage);
+      form.percentage = parseFloat(String(props.tax.percentage));
+      form.minimum_taxable_amount = props.tax.minimum_taxable_amount ?? '';
+      form.maximum_taxable_amount = props.tax.maximum_taxable_amount ?? '';
+      form.calculation_order = Number(props.tax.calculation_order || 0);
+      form.is_compound = !!props.tax.is_compound;
       form.tax_type = props.tax.tax_type;
       form.effective_from = props.tax.effective_from;
-      form.effective_to = props.tax.effective_to;
+      form.effective_to = props.tax.effective_to ?? '';
       form.is_active = !!props.tax.is_active;
-      form.description = props.tax.description;
+      form.description = props.tax.description ?? '';
       // Convert array to comma-separated string
       form.applicable_categories = (props.tax.applicable_categories || []).join(', ');
     } else {
       form.reset();
       form.jurisdiction = 'Default'; // Default value
       form.percentage = 0;
+      form.minimum_taxable_amount = '';
+      form.maximum_taxable_amount = '';
+      form.calculation_order = 0;
+      form.is_compound = false;
       form.is_active = true;
       form.effective_from = new Date().toISOString().split('T')[0];
       form.applicable_categories = '';
@@ -63,7 +105,7 @@ const submit = () => {
       : []
   };
 
-  if (isEditing.value) {
+  if (isEditing.value && props.tax) {
     form.transform(() => payload).put(`/app/taxes/${props.tax.id}`, {
       onSuccess: () => emit('close'),
     });
@@ -77,7 +119,7 @@ const submit = () => {
 
 <template>
   <Dialog :open="open" @update:open="$emit('close')">
-    <DialogContent class="sm:max-w-[500px]">
+    <DialogContent class="max-h-[90vh] overflow-y-auto sm:max-w-[560px]">
       <DialogHeader>
         <DialogTitle>{{ isEditing ? 'Edit Tax Rate' : 'Create Tax Rate' }}</DialogTitle>
         <DialogDescription>
@@ -95,6 +137,30 @@ const submit = () => {
           <div class="grid gap-2">
             <Label for="jurisdiction">Jurisdiction</Label>
             <Input id="jurisdiction" v-model="form.jurisdiction" placeholder="e.g. CA, NY, National" required />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+          <div class="grid gap-2">
+            <Label for="minimum_taxable_amount">Bracket Minimum</Label>
+            <Input id="minimum_taxable_amount" type="number" min="0" step="0.01" v-model="form.minimum_taxable_amount" placeholder="No minimum" />
+            <span v-if="form.errors.minimum_taxable_amount" class="text-xs text-red-500">{{ form.errors.minimum_taxable_amount }}</span>
+          </div>
+          <div class="grid gap-2">
+            <Label for="maximum_taxable_amount">Bracket Maximum</Label>
+            <Input id="maximum_taxable_amount" type="number" min="0" step="0.01" v-model="form.maximum_taxable_amount" placeholder="No maximum" />
+            <span v-if="form.errors.maximum_taxable_amount" class="text-xs text-red-500">{{ form.errors.maximum_taxable_amount }}</span>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+          <div class="grid gap-2">
+            <Label for="calculation_order">Calculation Order</Label>
+            <Input id="calculation_order" type="number" min="0" v-model="form.calculation_order" />
+          </div>
+          <div class="flex items-end gap-2 pb-2">
+            <Switch id="is_compound" :checked="form.is_compound" @update:checked="form.is_compound = $event" />
+            <Label for="is_compound">Compound on prior taxes</Label>
           </div>
         </div>
 

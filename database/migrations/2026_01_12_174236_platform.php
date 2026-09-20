@@ -17,7 +17,7 @@ return new class extends Migration
             $table->ulid('device_id')->primary();
             $table->string('device_name')->nullable();
             $table->string('trust_status')->default('active'); // active / revoked
-            $table->unsignedBigInteger('account_id')->nullable();
+            $table->ulid('account_id')->nullable();
             $table->string('device_type')->nullable()->comment('POS, Mobile, Tablet, Kiosk');
             $table->string('serial_number')->nullable()->unique();
             $table->string('mac_address')->nullable()->unique();
@@ -32,7 +32,7 @@ return new class extends Migration
 
         Schema::create('event_ledger', function (Blueprint $table) {
             $table->ulid('id')->primary();
-            $table->unsignedBigInteger('account_id');
+            $table->ulid('account_id');
             $table->ulid('device_id');
             $table->ulid('actor_user_id')->nullable();
             $table->string('event_type');
@@ -49,7 +49,6 @@ return new class extends Migration
 
             $table->index(['account_id', 'device_id']);
             $table->index(['event_time_utc']);
-            $table->index(['sync_status']);
             $table->index(['event_category']);
             $table->index(['account_id', 'local_sequence']);
             $table->foreign('device_id')->references('device_id')->on('devices');
@@ -61,7 +60,7 @@ return new class extends Migration
 
         Schema::create('sales', function (Blueprint $table) {
             $table->ulid('id')->primary();
-            $table->integer('account_id');
+            $table->ulid('account_id');
             $table->ulid('user_id')->nullable(); // who served the sale
 
             $table->string('customer_name')->nullable();
@@ -110,9 +109,7 @@ return new class extends Migration
             // batch_id can refer to batches table, but strictly speaking Inventory is the stock source.
             // Linking to batch_id for traceability.
             // $table->foreign('batch_id')->references('batch_id')->on('batches');
-             $table->foreign('inventory_id')->references('id')->on('inventory')->restrictOnDelete();
-            $table->foreign('drug_id')->references('id')->on('drugs')->nullOnDelete();
-            $table->foreign('batch_id')->references('id')->on('batches')->nullOnDelete();
+            // Cross-domain foreign keys are added after inventory, drugs and batches exist.
 
             $table->index(['sale_id']);
             $table->index(['inventory_id']);
@@ -125,7 +122,7 @@ return new class extends Migration
 
         Schema::create('inventory', function (Blueprint $table) {
             $table->ulid('id')->primary();
-            $table->unsignedBigInteger('account_id');
+            $table->ulid('account_id');
             $table->ulid('drug_id');
             $table->ulid('batch_id');
             $table->decimal('selling_price', 15, 2)->default(0);
@@ -152,7 +149,7 @@ return new class extends Migration
 
     Schema::create('financial_day_summaries', function (Blueprint $table) {
             $table->ulid('id')->primary();
-            $table->unsignedBigInteger('account_id');
+            $table->ulid('account_id');
             $table->date('day');
             $table->decimal('gross_sales', 15, 2)->default(0);
             $table->decimal('net_sales', 15, 2)->default(0);
@@ -208,8 +205,6 @@ return new class extends Migration
             $table->index(['name']);
             $table->index(['generic_name']);
             $table->index(['regulatory_code']);
-            $table->index(['is_prescription']);
-            $table->index(['is_controlled']);
             $table->index(['drug_class']);
         });
 
@@ -240,9 +235,17 @@ return new class extends Migration
             $table->index(['manufacturer']);
         });
 
+        if (Schema::getConnection()->getDriverName() !== 'sqlite') {
+            Schema::table('sale_items', function (Blueprint $table) {
+                $table->foreign('inventory_id')->references('id')->on('inventory')->restrictOnDelete();
+                $table->foreign('drug_id')->references('id')->on('drugs')->restrictOnDelete();
+                $table->foreign('batch_id')->references('id')->on('batches')->restrictOnDelete();
+            });
+        }
+
         Schema::create('tax_rates', function (Blueprint $table) {
             $table->ulid('id')->primary();
-            $table->unsignedBigInteger('account_id')->nullable()->comment('Null for global rates');
+            $table->ulid('account_id')->nullable()->comment('Null for global rates');
             $table->string('jurisdiction');
             $table->string('tax_name');
             $table->decimal('percentage', 5, 2);
@@ -267,7 +270,7 @@ return new class extends Migration
 
         Schema::create('audit_trail', function (Blueprint $table) {
             $table->ulid('id')->primary();
-            $table->unsignedBigInteger('account_id')->nullable();
+            $table->ulid('account_id')->nullable();
             $table->string('entity_type');
             $table->string('entity_id')->nullable();
             $table->string('action');
@@ -315,9 +318,9 @@ return new class extends Migration
         Schema::dropIfExists('batches');
         Schema::dropIfExists('drugs');
         Schema::dropIfExists('financial_day_summaries');
+        Schema::dropIfExists('sale_items');
         Schema::dropIfExists('inventory');
         Schema::dropIfExists('sales');
-        Schema::dropIfExists('sale_items');
         Schema::dropIfExists('event_ledger');
         Schema::dropIfExists('devices');
     }

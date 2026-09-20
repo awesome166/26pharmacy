@@ -2,13 +2,14 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class Customer extends Model
 {
-    use \AbacPermissions\Tenancy\UsesTenant, HasUlids;
+    use HasFactory, \AbacPermissions\Tenancy\UsesTenant, HasUlids;
 
     protected $primaryKey = 'id';
 

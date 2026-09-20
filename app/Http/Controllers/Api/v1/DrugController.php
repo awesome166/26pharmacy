@@ -67,6 +67,17 @@ class DrugController extends Controller
     }
 
 
+    public function show(Request $request, string $id)
+    {
+        $drug = Drug::findOrFail($id);
+
+        if ($request->wantsJson()) {
+            return response()->json(['data' => $drug]);
+        }
+
+        return Inertia::render('Drug/Show', ['drug' => $drug]);
+    }
+
     public function store(Request $request)
     {
         $validated = $request->validate([
@@ -89,10 +100,20 @@ class DrugController extends Controller
             'alternate_names' => 'nullable|array',
         ]);
 
-        $drug = Drug::create(array_merge($validated, [
-            'id' => \Illuminate\Support\Str::ulid(),
-            'account_id' => app(\AbacPermissions\Tenancy\TenantContext::class)->getAccountId()
-        ]));
+        $drug = \Illuminate\Support\Facades\DB::transaction(function () use ($validated, $request) {
+            $drug = Drug::create(array_merge($validated, [
+                'id' => \Illuminate\Support\Str::ulid(),
+                'account_id' => app(\AbacPermissions\Tenancy\TenantContext::class)->getAccountId(),
+            ]));
+            app(\App\Services\DomainEventService::class)->record(
+                'DRUG_UPSERTED', ['drug' => $drug->attributesToArray()], $request->user()?->id,
+            );
+            return $drug;
+        });
+
+        if ($request->wantsJson()) {
+            return response()->json(['data' => $drug], 201);
+        }
 
         return redirect()->back()->with('success', 'Drug created');
     }
@@ -109,7 +130,9 @@ class DrugController extends Controller
             'route' => 'nullable|string',
             'manufacturer' => 'nullable|string',
             'supplier' => 'nullable|string',
-
+            'is_prescription' => 'boolean',
+            'is_controlled' => 'boolean',
+            'is_narcotic' => 'boolean',
             'drug_class' => 'nullable|string',
             'storage_conditions' => 'nullable|string',
             'description' => 'nullable|string',
@@ -119,15 +142,33 @@ class DrugController extends Controller
             'alternate_names' => 'nullable|array',
         ]);
 
-        $drug->update($validated);
+        \Illuminate\Support\Facades\DB::transaction(function () use ($drug, $validated, $request) {
+            $drug->update($validated);
+            app(\App\Services\DomainEventService::class)->record(
+                'DRUG_UPSERTED', ['drug' => $drug->fresh()->attributesToArray()], $request->user()?->id,
+            );
+        });
+
+        if ($request->wantsJson()) {
+            return response()->json(['data' => $drug->fresh()]);
+        }
 
         return redirect()->back()->with('success', 'Drug updated');
     }
 
-    public function destroy(string $id)
+    public function destroy(Request $request, string $id)
     {
         $drug = Drug::findOrFail($id);
-        $drug->delete();
+        \Illuminate\Support\Facades\DB::transaction(function () use ($drug, $request) {
+            $drug->delete();
+            app(\App\Services\DomainEventService::class)->record(
+                'DRUG_DELETED', ['id' => (string) $drug->id], $request->user()?->id,
+            );
+        });
+
+        if ($request->wantsJson()) {
+            return response()->json(['message' => 'Drug deleted']);
+        }
 
         return redirect()->back()->with('success', 'Drug deleted');
     }

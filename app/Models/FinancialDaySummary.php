@@ -17,6 +17,7 @@ class FinancialDaySummary extends Model
     protected $fillable = [
         'id',
         'account_id',
+        'branch_id',
         'day',
         'gross_sales',
         'net_sales',

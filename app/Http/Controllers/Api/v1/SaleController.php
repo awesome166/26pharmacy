@@ -9,15 +9,19 @@ use Illuminate\Http\Request;
 use App\Jobs\AuditEventJob;
 use Inertia\Inertia;
 
+use App\Services\ReturnService;
 use Illuminate\Support\Facades\Log;
 
 class SaleController extends Controller
 {
     protected $saleService;
 
-    public function __construct(SaleService $saleService)
+    protected $returnService;
+
+    public function __construct(SaleService $saleService, ReturnService $returnService)
     {
         $this->saleService = $saleService;
+        $this->returnService = $returnService;
     }
 
 
@@ -40,7 +44,10 @@ class SaleController extends Controller
         $sortBy = $request->input('sort_by', 'finalized_at');
         $sortDirection = $request->input('sort_direction', 'desc');
 
-        $sales = $this->saleService->getAllSales($perPage, $filters, $sortBy, $sortDirection);
+        $accountId = (string) app(\AbacPermissions\Tenancy\TenantContext::class)->getAccountId();
+        $branchId = app(\App\Services\DeviceContextService::class)
+            ->currentBranchId($accountId, $request->header('X-Device-Id'));
+        $sales = $this->saleService->getAllSales($perPage, $filters, $sortBy, $sortDirection, $branchId);
 
         if ($request->wantsJson()) {
             return response()->json(['data' => $sales]);
@@ -58,7 +65,10 @@ class SaleController extends Controller
     public function store(FinalizeSaleRequest $request) // Removed JsonResponse return type
     {
         // Thin controller: orchestrates service and compliance jobs
-        $eventReceipt = $this->saleService->processSale($request->validated());
+        $saleData = $request->validated();
+        $saleData['user_id'] = (string) $request->user()->id;
+        $saleData['device_id'] = $request->header('X-Device-Id') ?: ($saleData['device_id'] ?? null);
+        $eventReceipt = $this->saleService->processSale($saleData);
 
         Log::info('Sale processed', ['event_receipt' => $eventReceipt]);
 
@@ -68,11 +78,11 @@ class SaleController extends Controller
                 'entity_type' => 'sale',
                 'entity_id' => $eventReceipt->event_id,
                 'action' => 'SALE_FINALIZED',
-                'actor_user_id' => $request->user_id,
+                'actor_user_id' => $request->user()->id,
                 'metadata' => [
-                    'account_id' => $request->account_id,
-                    'device_id' => $request->device_id,
-                    'total_amount' => $request->subtotal
+                    'account_id' => app(\AbacPermissions\Tenancy\TenantContext::class)->getAccountId(),
+                    'device_id' => $saleData['device_id'],
+                    'total_amount' => $eventReceipt->sale->total_amount,
                 ]
             ]);
 
@@ -81,7 +91,8 @@ class SaleController extends Controller
                     return response()->json([
                         'message' => 'Sale finalized and ledgered',
                         'event_id' => $eventReceipt->event_id,
-                        'hash' => $eventReceipt->hash
+                        'hash' => $eventReceipt->hash,
+                        'sale' => $eventReceipt->sale,
                     ], 201);
                 }
 
@@ -96,7 +107,10 @@ class SaleController extends Controller
 
     public function show(string $saleId, Request $request) // Added Request parameter and removed JsonResponse return type
     {
-        $sale = $this->saleService->getSale($saleId);
+        $accountId = (string) app(\AbacPermissions\Tenancy\TenantContext::class)->getAccountId();
+        $branchId = app(\App\Services\DeviceContextService::class)
+            ->currentBranchId($accountId, $request->header('X-Device-Id'));
+        $sale = $this->saleService->getSale($saleId, $branchId);
 
         if (!$sale) {
             if ($request->wantsJson()) {
@@ -110,5 +124,32 @@ class SaleController extends Controller
         }
 
         return Inertia::render('Sales/Show', ['sale' => $sale]);
+    }
+
+    public function reverse(string $saleId, Request $request)
+    {
+        $validated = $request->validate([
+            'reason' => 'required|string|max:500',
+            'items' => 'required|array',
+            'items.*.sale_item_id' => 'required|string',
+            'items.*.quantity' => 'required|integer|min:1',
+            'refund_amount' => 'nullable|numeric|min:0',
+            'refund_method' => 'nullable|string',
+            'items.*.restock' => 'boolean',
+            'items.*.condition' => 'nullable|string|max:100',
+        ]);
+
+        $validated['sale_id'] = $saleId;
+
+        $return = $this->returnService->processReturn($validated, $request->user());
+
+        if ($request->wantsJson()) {
+            return response()->json([
+                'message' => 'Sale reversed successfully',
+                'return_id' => $return->id,
+            ]);
+        }
+
+        return redirect()->back()->with('success', 'Sale reversed successfully');
     }
 }

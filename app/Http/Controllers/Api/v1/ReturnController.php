@@ -25,11 +25,14 @@ class ReturnController extends Controller
         $search = $request->input('search');
         $perPage = $request->input('per_page', 15);
 
+        $accountId = (string) app(\AbacPermissions\Tenancy\TenantContext::class)->getAccountId();
+        $branchId = app(\App\Services\DeviceContextService::class)
+            ->currentBranchId($accountId, $request->header('X-Device-Id'));
         $query = \App\Models\SalesReturn::with([
             'user:id,name,email',
             'sale:id,created_at',
             'items.saleItem.inventory.drug:id,name,generic_name'
-        ])
+        ])->where('branch_id', $branchId)
         ->orderBy('returned_at', 'desc');
 
         if ($search) {
@@ -84,7 +87,7 @@ class ReturnController extends Controller
     {
         $validated = $request->validate([
             'sale_id' => 'required|string|exists:sales,id',
-            'refund_amount' => 'required|numeric|min:0',
+            'refund_amount' => 'nullable|numeric|min:0',
             'refund_method' => 'required|string',
             'reason' => 'required|string',
             'items' => 'required|array|min:1',

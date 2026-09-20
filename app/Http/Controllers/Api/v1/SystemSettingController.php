@@ -58,12 +58,15 @@ class SystemSettingController extends Controller
         SystemSetting::clearCache();
 
         try {
-            DB::transaction(function () use ($validated) {
+            DB::transaction(function () use ($validated, $request) {
                 foreach ($validated['settings'] as $key => $value) {
                     // Ensure booleans are stored consistently if strictly required,
                     // but SystemSetting::setValue should handle it.
                     SystemSetting::setValue($key, $value);
                 }
+                app(\App\Services\DomainEventService::class)->record(
+                    'SETTINGS_UPDATED', ['settings' => $validated['settings']], $request->user()?->id,
+                );
             });
         } catch (\InvalidArgumentException $e) {
             // Handle namespace protection violations

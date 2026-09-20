@@ -18,17 +18,15 @@ class RebuildProjectionJob implements ShouldQueue
 
     public $queue = 'projections';
 
-    protected $tenantId;
-    protected $branchId;
+    protected string $accountId;
 
-    public function __construct(string $tenantId, ?string $branchId = null)
+    public function __construct(string $accountId)
     {
-        $this->tenantId = $tenantId;
-        $this->branchId = $branchId;
+        $this->accountId = $accountId;
     }
 
-    public function handle(ProjectionService $projectionService)
+    public function handle(ProjectionService $projectionService): void
     {
-        $projectionService->rebuildProjections($this->tenantId, $this->branchId);
+        $projectionService->rebuildProjections($this->accountId);
     }
 }

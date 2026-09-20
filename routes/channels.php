@@ -7,8 +7,10 @@ Broadcast::channel('App.Models.User.{id}', function ($user, $id) {
 });
 
 Broadcast::channel('sync.tenant.{tenantId}', function ($user, $tenantId) {
-    // In a real app, verify $user belongs to $tenantId
-    // For now, we assume auth middleware handled it or we check user's account_id
+    if (!(method_exists($user, 'isZeus') && $user->isZeus())
+        && !$user->accounts()->whereKey($tenantId)->exists()) {
+        return false;
+    }
 
     // Return data for the presence channel "who's here" list
     return [

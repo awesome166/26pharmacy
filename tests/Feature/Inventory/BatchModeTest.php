@@ -4,7 +4,8 @@ namespace Tests\Feature\Inventory;
 
 use App\Models\SystemSetting;
 use App\Models\User;
-use App\Models\Batch;
+use App\Models\Branch;
+use App\Models\Device;
 use AbacPermissions\Models\Account;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
@@ -25,6 +26,28 @@ class BatchModeTest extends TestCase
             'slug' => 'test-pharmacy'
         ]);
         $this->user->accounts()->attach($this->account);
+
+        $branchId = (string) Str::ulid();
+        Branch::create([
+            'branch_id' => $branchId,
+            'account_id' => $this->account->id,
+            'name' => 'Main Branch',
+            'code' => 'MAIN',
+            'is_active' => true,
+        ]);
+        $deviceId = (string) Str::ulid();
+        Device::create([
+            'device_id' => $deviceId,
+            'account_id' => $this->account->id,
+            'branch_id' => $branchId,
+            'device_name' => 'Till 1',
+            'trust_status' => 'active',
+        ]);
+        config([
+            'sync.role' => 'child',
+            'sync.client_id' => $deviceId,
+            'sync.queue_connection' => 'database',
+        ]);
 
         // Mock Tenant Context
         $this->withoutMiddleware();
@@ -61,8 +84,9 @@ class BatchModeTest extends TestCase
         // 2. Create Batch
         $response = $this->postJson('/api/v1/batches', [
             'drug_id' => $drug->id,
-            'expiry_date' => '2025-12-31',
+            'expiry_date' => now()->addYear()->toDateString(),
             'lot_number' => 'LOT-123',
+            'supplier' => 'Pharma Supply Ltd',
             'manufacturer' => 'Pfizer',
             'cost_price' => 10.50,
             'quantity' => 100,
@@ -104,8 +128,9 @@ class BatchModeTest extends TestCase
         // 2. Create Batch
         $response = $this->postJson('/api/v1/batches', [
             'drug_id' => $drug->id,
-            'expiry_date' => '2025-12-31',
+            'expiry_date' => now()->addYear()->toDateString(),
             'lot_number' => 'LOT-456',
+            'supplier' => 'Pharma Supply Ltd',
             'manufacturer' => 'Moderna',
             'cost_price' => 15.00,
             'quantity' => 50,

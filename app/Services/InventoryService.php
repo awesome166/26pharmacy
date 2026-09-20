@@ -18,7 +18,7 @@ class InventoryService
     /**
      * Get paginated stock levels for the current tenant account.
      */
-    public function getStockLevels(int $perPage = 15)
+    public function getStockLevels(int $perPage = 15, ?string $branchId = null)
     {
         $accountId = app(\AbacPermissions\Tenancy\TenantContext::class)->getAccountId();
 
@@ -27,8 +27,9 @@ class InventoryService
             return new \Illuminate\Pagination\LengthAwarePaginator([], 0, $perPage);
         }
 
-        // Use Eloquent model with automatic tenant scoping via UsesTenant trait
+        $branchId ??= app(DeviceContextService::class)->currentBranchId((string) $accountId);
         return \App\Models\Inventory::with(['drug', 'batch'])
+            ->where('branch_id', $branchId)
             ->paginate($perPage);
     }
 
@@ -36,17 +37,21 @@ class InventoryService
      * Search for drugs/inventory within the current tenant account.
      * OPTIMIZED: Uses joins instead of whereHas for 3-5x better performance.
      */
-    public function searchDrugs(string $query, int $perPage = 15)
+    public function searchDrugs(string $query, int $perPage = 15, ?string $branchId = null)
     {
         $query = trim($query);
         if ($query === '') {
-            return $this->getStockLevels($perPage);
+            return $this->getStockLevels($perPage, $branchId);
         }
+
+        $accountId = (string) app(\AbacPermissions\Tenancy\TenantContext::class)->getAccountId();
+        $branchId ??= app(DeviceContextService::class)->currentBranchId($accountId);
 
         // Use joins instead of whereHas for better performance
         return \App\Models\Inventory::select('inventory.*')
             ->join('drugs', 'inventory.drug_id', '=', 'drugs.id')
             ->leftJoin('batches', 'inventory.batch_id', '=', 'batches.id')
+            ->where('inventory.branch_id', $branchId)
             ->where('inventory.is_active', true)
             ->where(function ($q) use ($query) {
                 $q->where('drugs.name', 'like', "%{$query}%")
@@ -115,10 +120,12 @@ class InventoryService
     /**
      * Get expired stock.
      */
-    public function getExpiredStock(int $perPage = 15, int $daysThreshold = 0)
+    public function getExpiredStock(int $perPage = 15, int $daysThreshold = 0, ?string $branchId = null)
     {
-         // Use Eloquent model with automatic tenant scoping via UsesTenant trait
+        $accountId = (string) app(\AbacPermissions\Tenancy\TenantContext::class)->getAccountId();
+        $branchId ??= app(DeviceContextService::class)->currentBranchId($accountId);
         return \App\Models\Inventory::with(['drug', 'batch'])
+            ->where('branch_id', $branchId)
             ->whereHas('batch', function($q) use ($daysThreshold) {
                 // If daysThreshold > 0, we can also see "expiring soon"
                 $date = now()->addDays($daysThreshold)->toDateString();

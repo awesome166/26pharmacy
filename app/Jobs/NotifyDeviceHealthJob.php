@@ -27,8 +27,16 @@ class NotifyDeviceHealthJob implements ShouldQueue
         $this->issue = $issue;
     }
 
-    public function handle(DeviceHealthService $healthService)
+    public function handle(DeviceHealthService $healthService): void
     {
-        // Logic to send notification (Email, Slack, etc.)
+        $device = \App\Models\Device::where('device_id', $this->deviceId)->first();
+        if (!$device) {
+            return;
+        }
+
+        \Illuminate\Support\Facades\Log::warning("Device health issue: {$this->issue}", [
+            'device_id' => $this->deviceId,
+            'device_name' => $device->device_name,
+        ]);
     }
 }

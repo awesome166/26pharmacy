@@ -5,9 +5,6 @@ namespace App\Http\Controllers\Api\v1;
 use App\Http\Controllers\Controller;
 use App\Services\SyncService;
 use Illuminate\Http\Request;
-use Illuminate\Http\JsonResponse;
-use App\Jobs\SyncEventsToCloudJob;
-use App\Jobs\PullCloudEventsJob;
 use Inertia\Inertia;
 
 class SyncController extends Controller
@@ -25,12 +22,10 @@ class SyncController extends Controller
     public function push(Request $request)
     {
         // Trigger SyncService Push
-        $this->syncService->push();
+        $result = $this->syncService->push();
 
         if ($request->wantsJson()) {
-            return response()->json([
-                // 'message' => 'Sync push initiated'
-            ], 200);
+            return response()->json($result, $result['ok'] ? 200 : 502);
         }
 
         return redirect()->back()->with('success', 'Sync push started');
@@ -42,14 +37,26 @@ class SyncController extends Controller
     public function pull(Request $request)
     {
         // Trigger SyncService Pull
-        $this->syncService->pull();
+        $result = $this->syncService->pull();
 
         if ($request->wantsJson()) {
-            return response()->json([
-                // 'message' => 'Sync pull initiated'
-            ], 200);
+            return response()->json($result, $result['ok'] ? 200 : 502);
         }
 
         return redirect()->back()->with('success', 'Sync pull started');
+    }
+
+    /**
+     * Full restore from cloud - wipes local read models and replays all events.
+     */
+    public function restore(Request $request)
+    {
+        $result = $this->syncService->restoreFromCloud();
+
+        if ($request->wantsJson()) {
+            return response()->json($result, $result['ok'] ? 200 : 502);
+        }
+
+        return redirect()->back()->with('success', 'Full restore completed');
     }
 }

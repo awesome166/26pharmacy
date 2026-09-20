@@ -11,22 +11,26 @@ class EventRejection extends Model
 {
     use HasUlids;
 
-
-    protected $primaryKey = 'event_id';
+    protected $primaryKey = 'id';
 
     protected $fillable = [
-        'event_id',
+        'id',
         'rejection_reason',
         'reviewed_by',
         'resolved_at',
+        'rejection_details',
+        'resolution_action',
+        'resolved_event_id',
+        'correction_data',
     ];
 
     protected $casts = [
         'resolved_at' => 'datetime',
+        'correction_data' => 'array',
     ];
 
     public function reviewedBy(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'reviewed_by', 'user_id');
+        return $this->belongsTo(User::class, 'reviewed_by', 'id');
     }
 }

@@ -20,15 +20,21 @@ class DailyFinancialSummaryJob implements ShouldQueue
 
     protected $branchId;
     protected $date;
+    protected $accountId;
 
-    public function __construct(string $branchId, string $date)
+    public function __construct(string $branchId, string $date, ?string $accountId = null)
     {
         $this->branchId = $branchId;
         $this->date = $date;
+        $this->accountId = $accountId;
     }
 
     public function handle(ReportingService $reportingService)
     {
-        $reportingService->getDailySummary($this->branchId, $this->date);
+        $accountId = $this->accountId ?: \Illuminate\Support\Facades\DB::table('branches')
+            ->where('branch_id', $this->branchId)->value('account_id');
+        $account = \AbacPermissions\Models\Account::query()->findOrFail($accountId);
+        app(\AbacPermissions\Tenancy\TenantContext::class)->setAccount($account);
+        $reportingService->getDailySummary($this->date, $this->branchId, true);
     }
 }
