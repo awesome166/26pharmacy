@@ -18,6 +18,9 @@ class EventLedgerService
     public function emitEvent(array $eventData)
     {
         return \Illuminate\Support\Facades\DB::transaction(function () use ($eventData) {
+            app(EventValidationService::class)->assertSupported(
+                $eventData['event_type'], (int) ($eventData['event_version'] ?? 1)
+            );
             // Scope automatically handles account_id filtering via UsesTenant
             $accountId = $eventData['account_id'] ?? app(TenantContext::class)->getAccountId();
             $device = \App\Models\Device::where('device_id', $eventData['device_id'])
@@ -25,14 +28,16 @@ class EventLedgerService
                 ->where('trust_status', 'active')
                 ->firstOrFail();
 
-            $lastEvent = \App\Models\EventLedger::withoutGlobalScope(\AbacPermissions\Tenancy\TenantScope::class)
-                ->where('device_id', $device->device_id)
-                ->orderBy('local_sequence', 'desc')
-                ->lockForUpdate()
-                ->first();
-
-            $sequence = $lastEvent ? $lastEvent->local_sequence + 1 : 1;
-            $previousHash = $lastEvent ? $lastEvent->event_hash : str_repeat('0', 64);
+            // A persistent row exists even for a new stream, unlike locking the
+            // last ledger event (which cannot lock an empty result set).
+            \Illuminate\Support\Facades\DB::table('device_stream_heads')->insertOrIgnore([
+                'device_id' => $device->device_id, 'last_local_sequence' => 0,
+                'last_event_hash' => str_repeat('0', 64), 'created_at' => now(), 'updated_at' => now(),
+            ]);
+            $head = \Illuminate\Support\Facades\DB::table('device_stream_heads')
+                ->where('device_id', $device->device_id)->lockForUpdate()->first();
+            $sequence = (int) $head->last_local_sequence + 1;
+            $previousHash = (string) $head->last_event_hash;
 
             $id = \Illuminate\Support\Str::ulid();
             // Database date serialization is second-precision; hash the same canonical value sent to the cloud.
@@ -77,6 +82,8 @@ class EventLedgerService
                 'synced_at' => $globalSequence ? now() : null,
                 'received_at_cloud' => $globalSequence ? now() : null,
             ]);
+            \Illuminate\Support\Facades\DB::table('device_stream_heads')->where('device_id', $device->device_id)
+                ->update(['last_local_sequence' => $sequence, 'last_event_hash' => $hash, 'updated_at' => now()]);
 
             $eventObject = (object) [
                 'id' => $id,

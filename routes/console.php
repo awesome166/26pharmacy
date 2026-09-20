@@ -13,12 +13,14 @@ Schedule::call(function () {
         return;
     }
 
-    \Illuminate\Support\Facades\DB::table('system_settings')
-        ->where('key', 'sync_client_id')
-        ->whereNotNull('account_id')
-        ->get(['account_id', 'value'])
-        ->each(function ($setting) {
-            \App\Jobs\SyncEventsToCloudJob::dispatch($setting->account_id, $setting->value);
-            \App\Jobs\PullCloudEventsJob::dispatch($setting->account_id, $setting->value);
+    // Devices are the installation registry. Environment-provisioned clients
+    // must not disappear from recovery merely because settings were not copied.
+    \Illuminate\Support\Facades\DB::table('devices')
+        ->where('trust_status', 'active')->whereNotNull('account_id')
+        ->whereNotNull('branch_id')->orderBy('device_id')
+        ->get(['account_id', 'device_id'])
+        ->each(function ($device) {
+            \App\Jobs\SyncEventsToCloudJob::dispatch($device->account_id, $device->device_id);
+            \App\Jobs\PullCloudEventsJob::dispatch($device->account_id, $device->device_id);
         });
 })->everyMinute()->name('sync-heartbeat')->withoutOverlapping();

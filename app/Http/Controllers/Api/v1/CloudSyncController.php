@@ -6,6 +6,9 @@ use App\Events\SyncUpdateAvailable;
 use App\Http\Controllers\Controller;
 use App\Services\EventLedgerService;
 use App\Services\ProjectionService;
+use App\Services\EventValidationService;
+use App\Services\Sync\DownloadAuthorization;
+use App\Services\Sync\EventPayloadAuthorization;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -15,6 +18,9 @@ class CloudSyncController extends Controller
     public function __construct(
         private readonly EventLedgerService $ledger,
         private readonly ProjectionService $projections,
+        private readonly DownloadAuthorization $downloads,
+        private readonly EventValidationService $validation,
+        private readonly EventPayloadAuthorization $payloadAuthorization,
     ) {}
 
     public function receiveBatch(Request $request)
@@ -42,8 +48,11 @@ class CloudSyncController extends Controller
         DB::transaction(function () use ($validated, $device, &$inserted) {
             $state = DB::table('sync_global_state')->where('id', 1)->lockForUpdate()->first();
             $global = (int) $state->last_sequence;
-            $previous = DB::table('event_ledger')->where('device_id', $device->device_id)
-                ->orderByDesc('local_sequence')->lockForUpdate()->first();
+            DB::table('device_stream_heads')->insertOrIgnore([
+                'device_id' => $device->device_id, 'last_local_sequence' => 0,
+                'last_event_hash' => str_repeat('0', 64), 'created_at' => now(), 'updated_at' => now(),
+            ]);
+            $head = DB::table('device_stream_heads')->where('device_id', $device->device_id)->lockForUpdate()->first();
 
             foreach ($validated['events'] as $input) {
                 if ($input['device_id'] !== $device->device_id
@@ -57,17 +66,31 @@ class CloudSyncController extends Controller
                     if ($existing->device_id !== $device->device_id || $existing->event_hash !== $input['event_hash']) {
                         throw ValidationException::withMessages(['events' => 'An event ID was reused with different content.']);
                     }
-                    $previous = $existing;
+                    // A duplicate is an acknowledgement, not the stream head.
+                    // Keeping the real head avoids accepting a new event after an
+                    // older retry with a stale sequence.
                     continue;
                 }
 
-                $expectedSequence = $previous ? ((int) $previous->local_sequence + 1) : 1;
-                $expectedPreviousHash = $previous?->event_hash ?? str_repeat('0', 64);
+                $expectedSequence = (int) $head->last_local_sequence + 1;
+                $expectedPreviousHash = $head->last_event_hash;
                 if ((int) $input['local_sequence'] !== $expectedSequence || ($input['previous_hash'] ?? null) !== $expectedPreviousHash) {
                     throw ValidationException::withMessages(['events' => 'Event sequence or hash-chain continuity is invalid.']);
                 }
 
-                $payload = is_string($input['event_payload']) ? json_decode($input['event_payload'], true) : $input['event_payload'];
+                try {
+                    $payload = is_string($input['event_payload'])
+                        ? json_decode($input['event_payload'], true, 512, JSON_THROW_ON_ERROR)
+                        : $input['event_payload'];
+                } catch (\JsonException) {
+                    throw ValidationException::withMessages(['events' => 'INVALID_EVENT_PAYLOAD']);
+                }
+                $payload = $this->validation->validateForCloud(
+                    $input['event_type'], (int) ($input['event_version'] ?? 1), $payload
+                );
+                $this->payloadAuthorization->authorize(
+                    (string) $device->account_id, (string) $device->branch_id, $input['event_type'], $payload
+                );
                 $hashInput = [
                     'id' => $input['id'], 'account_id' => $input['account_id'], 'branch_id' => $input['branch_id'],
                     'device_id' => $input['device_id'], 'actor_user_id' => $input['actor_user_id'] ?? null,
@@ -93,12 +116,17 @@ class CloudSyncController extends Controller
                     'received_at_cloud' => now(), 'synced_at' => now(),
                     'created_at' => now(), 'updated_at' => now(),
                 ]);
-                $previous = (object) $input;
-                $previous->event_hash = $input['event_hash'];
+                $head->last_local_sequence = (int) $input['local_sequence'];
+                $head->last_event_hash = $input['event_hash'];
                 $inserted[] = $input['id'];
             }
 
             DB::table('sync_global_state')->where('id', 1)->update(['last_sequence' => $global]);
+            DB::table('device_stream_heads')->where('device_id', $device->device_id)->update([
+                'last_local_sequence' => $head->last_local_sequence,
+                'last_event_hash' => $head->last_event_hash,
+                'updated_at' => now(),
+            ]);
         });
 
         // Project every submitted event that is not yet acknowledged as projected.
@@ -129,7 +157,10 @@ class CloudSyncController extends Controller
     {
         $validated = $request->validate(['after_global_sequence' => ['nullable', 'integer', 'min:0'], 'limit' => ['nullable', 'integer', 'min:1', 'max:500']]);
         $device = $request->attributes->get('sync_device');
+        $policy = $this->downloads->continuous($device);
+        $allowedBranches = json_decode($policy->allowed_branch_ids, true) ?: [];
         $events = DB::table('event_ledger')->where('account_id', $device->account_id)
+            ->when($allowedBranches !== [], fn ($query) => $query->whereIn('branch_id', $allowedBranches))
             ->where('global_sequence', '>', $validated['after_global_sequence'] ?? 0)
             ->orderBy('global_sequence')->limit($validated['limit'] ?? 100)->get();
         return response()->json([
@@ -140,10 +171,8 @@ class CloudSyncController extends Controller
 
     public function fullRestore(Request $request)
     {
-        $device = $request->attributes->get('sync_device');
-        return response()->json([
-            'events' => DB::table('event_ledger')->where('account_id', $device->account_id)->orderBy('global_sequence')->get(),
-            'access_snapshot' => app(\App\Services\AccessSnapshotService::class)->export((string) $device->account_id),
-        ]);
+        // The legacy endpoint was an unsafe, unbounded destructive restore.
+        // Restore now requires a staged, device-bound grant protocol.
+        abort(410, 'RESTORE_PROTOCOL_UPGRADE_REQUIRED');
     }
 }

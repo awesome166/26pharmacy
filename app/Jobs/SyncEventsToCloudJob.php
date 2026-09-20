@@ -11,6 +11,7 @@ use App\Services\SyncService;
 use AbacPermissions\Models\Account;
 use AbacPermissions\Tenancy\TenantContext;
 use RuntimeException;
+use Illuminate\Queue\Middleware\WithoutOverlapping;
 
 /**
  * Job to synchronize local events to the cloud.
@@ -42,6 +43,14 @@ class SyncEventsToCloudJob implements ShouldQueue
         if (!($result['ok'] ?? false)) {
             throw new RuntimeException($result['message'] ?? 'Cloud sync push failed.');
         }
+    }
+
+    public function middleware(): array
+    {
+        return [
+            (new WithoutOverlapping("sync:{$this->accountId}:{$this->deviceId}"))
+                ->shared()->releaseAfter(5)->expireAfter(120),
+        ];
     }
 
     public function backoff(): array

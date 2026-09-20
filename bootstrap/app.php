@@ -40,6 +40,7 @@ return Application::configure(basePath: dirname(__DIR__))
             // 'permission' => \App\AccessControl\Middleware\EnsurePermission::class,
             'accounting.enabled' => \App\Http\Middleware\EnsureAccountingEnabled::class,
             'sync.token' => \App\Http\Middleware\VerifySyncToken::class,
+            'sync.role' => \App\Http\Middleware\RequireSyncRole::class,
             'licensed' => \App\Http\Middleware\EnsureLicensed::class,
         ]);
     })

@@ -19,8 +19,10 @@ class ProjectionService
     public function projectEvent($event)
     {
         $payload = is_string($event->event_payload) ? json_decode($event->event_payload, true) : $event->event_payload;
-        $accountId = $event->account_id ?? $payload['account_id'] ?? null;
-        $branchId = $event->branch_id ?? $payload['branch_id'] ?? null;
+        // Envelope ownership is immutable. Never let a payload select its tenant
+        // or branch while replaying it.
+        $accountId = $event->account_id ?? null;
+        $branchId = $event->branch_id ?? null;
         $eventTime = $event->event_time_utc ?? $payload['event_time_utc'] ?? now();
 
         if (!$accountId) {
@@ -41,6 +43,7 @@ class ProjectionService
                 $saleId = $payload['sale_id'] ?? $payload['id'];
                 $sale = \App\Models\Sale::withoutGlobalScope(\AbacPermissions\Tenancy\TenantScope::class)
                     ->where('id', $saleId)->first();
+                $this->assertOwned($sale, $accountId, 'sale');
                 $isNew = !$sale;
                 $sale = \App\Models\Sale::withoutGlobalScope(\AbacPermissions\Tenancy\TenantScope::class)->updateOrCreate(
                     ['id' => $saleId],
@@ -57,6 +60,10 @@ class ProjectionService
                 );
                 if ($isNew) {
                     foreach ($payload['items'] ?? [] as $item) {
+                        $existingItem = \App\Models\SaleItem::with('sale')->find($item['id']);
+                        if ($existingItem && (string) $existingItem->sale?->account_id !== (string) $accountId) {
+                            throw new \RuntimeException('Sale item ownership conflict.');
+                        }
                         \App\Models\SaleItem::updateOrCreate(['id' => $item['id']], [
                             'sale_id' => $sale->id, 'batch_id' => $item['batch_id'], 'inventory_id' => $item['inventory_id'],
                             'drug_id' => $item['drug_id'], 'quantity' => $item['quantity'], 'price' => $item['price'],
@@ -160,7 +167,18 @@ class ProjectionService
                 }
                 break;
 
+            case 'SALE_ITEM_DOSAGE_AMENDED':
+                $item = \App\Models\SaleItem::query()->where('id', $payload['sale_item_id'] ?? null)
+                    ->whereHas('sale', fn ($query) => $query->where('account_id', $accountId))->first();
+                if (!$item) {
+                    throw new \RuntimeException('Dosage amendment references an unknown sale item.');
+                }
+                $item->update(['dosage_instructions' => $payload['dosage_instructions'] ?? null]);
+                break;
+
             case 'BATCH_REGISTERED':
+                $this->assertOwned(\App\Models\Batch::withoutGlobalScope(\AbacPermissions\Tenancy\TenantScope::class)
+                    ->where('id', $payload['batch_id'])->first(), $accountId, 'batch');
                 \App\Models\Batch::withoutGlobalScope(\AbacPermissions\Tenancy\TenantScope::class)
                     ->updateOrCreate(['id' => $payload['batch_id']], [
                         'id' => $payload['batch_id'],
@@ -219,6 +237,7 @@ class ProjectionService
                 if (!$drug) {
                     $drug = new \App\Models\Drug(['id' => $drugData['id']]);
                 }
+                $this->assertOwned($drug->exists ? $drug : null, $accountId, 'drug');
                 $drug->fill($drugData + ['account_id' => $accountId]);
                 $drug->account_id = $accountId;
                 $drug->save();
@@ -230,8 +249,7 @@ class ProjectionService
                 break;
 
             case 'CUSTOMER_UPSERTED':
-                \App\Models\Customer::withoutGlobalScope(\AbacPermissions\Tenancy\TenantScope::class)
-                    ->updateOrCreate(['id' => $payload['customer']['id']], $payload['customer'] + ['account_id' => $accountId]);
+                app(\App\Services\Sync\CustomerProjector::class)->apply($event);
                 break;
 
             case 'CUSTOMER_DELETED':
@@ -240,8 +258,10 @@ class ProjectionService
                 break;
 
             case 'TAX_RATE_UPSERTED':
+                $this->assertOwned(\App\Models\TaxRate::withoutGlobalScope(\AbacPermissions\Tenancy\TenantScope::class)
+                    ->where('id', $payload['tax_rate']['id'])->first(), $accountId, 'tax rate');
                 \App\Models\TaxRate::withoutGlobalScope(\AbacPermissions\Tenancy\TenantScope::class)
-                    ->updateOrCreate(['id' => $payload['tax_rate']['id']], $payload['tax_rate'] + ['account_id' => $accountId]);
+                    ->updateOrCreate(['id' => $payload['tax_rate']['id']], array_replace($payload['tax_rate'], ['account_id' => $accountId]));
                 break;
 
             case 'TAX_RATE_DELETED':
@@ -250,10 +270,12 @@ class ProjectionService
                 break;
 
             case 'BATCH_UPSERTED':
+                $this->assertOwned(\App\Models\Batch::withoutGlobalScope(\AbacPermissions\Tenancy\TenantScope::class)
+                    ->where('id', $payload['batch']['id'])->first(), $accountId, 'batch');
                 \App\Models\Batch::withoutGlobalScope(\AbacPermissions\Tenancy\TenantScope::class)
-                    ->updateOrCreate(['id' => $payload['batch']['id']], $payload['batch'] + [
+                    ->updateOrCreate(['id' => $payload['batch']['id']], array_replace($payload['batch'], [
                         'account_id' => $accountId, 'branch_id' => $branchId,
-                    ]);
+                    ]));
                 break;
 
             case 'BATCH_DELETED':
@@ -262,10 +284,12 @@ class ProjectionService
                 break;
 
             case 'INVENTORY_UPSERTED':
+                $this->assertOwned(\App\Models\Inventory::withoutGlobalScope(\AbacPermissions\Tenancy\TenantScope::class)
+                    ->where('id', $payload['inventory']['id'])->first(), $accountId, 'inventory');
                 \App\Models\Inventory::withoutGlobalScope(\AbacPermissions\Tenancy\TenantScope::class)
-                    ->updateOrCreate(['id' => $payload['inventory']['id']], $payload['inventory'] + [
-                        'account_id' => $accountId, 'branch_id' => $payload['inventory']['branch_id'] ?? $branchId,
-                    ]);
+                    ->updateOrCreate(['id' => $payload['inventory']['id']], array_replace($payload['inventory'], [
+                        'account_id' => $accountId, 'branch_id' => $branchId,
+                    ]));
                 break;
 
             case 'INVENTORY_DEACTIVATED':
@@ -290,15 +314,27 @@ class ProjectionService
                 break;
 
             case 'BRANCH_UPSERTED':
+                $this->assertOwned(\App\Models\Branch::withoutGlobalScope(\AbacPermissions\Tenancy\TenantScope::class)
+                    ->where('branch_id', $payload['branch']['branch_id'])->first(), $accountId, 'branch');
                 \App\Models\Branch::withoutGlobalScope(\AbacPermissions\Tenancy\TenantScope::class)
-                    ->updateOrCreate(['branch_id' => $payload['branch']['branch_id']], $payload['branch'] + ['account_id' => $accountId]);
+                    ->updateOrCreate(['branch_id' => $payload['branch']['branch_id']], array_replace($payload['branch'], ['account_id' => $accountId]));
                 break;
+
+            default:
+                throw new \RuntimeException("Unsupported event type: {$event->event_type}");
             }
 
             \Illuminate\Support\Facades\DB::table('projected_events')->insert([
                 'event_id' => $event->id, 'projected_at' => now(),
             ]);
         });
+    }
+
+    private function assertOwned(?object $model, string $accountId, string $label): void
+    {
+        if ($model && (string) $model->account_id !== (string) $accountId) {
+            throw new \RuntimeException("{$label} ownership conflict.");
+        }
     }
 
     /**

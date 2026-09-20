@@ -11,7 +11,6 @@ class DeviceContextService
 {
     public function currentDevice(string $accountId, ?string $deviceId = null): Device
     {
-        $requestedDeviceId = $deviceId ?: request()->header('X-Device-Id');
         $configuredDeviceId = DB::table('system_settings')
             ->where('account_id', $accountId)
             ->where('key', 'sync_client_id')
@@ -29,6 +28,9 @@ class DeviceContextService
                     ->where('branches.is_active', true);
             });
 
+        // Child installations must stamp writes with their provisioned identity.
+        // A browser supplied header is not an authority to switch device streams.
+        $requestedDeviceId = $deviceId;
         if ($requestedDeviceId) {
             $device = (clone $query)->where('device_id', $requestedDeviceId)->first();
 

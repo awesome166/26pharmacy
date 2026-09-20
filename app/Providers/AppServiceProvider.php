@@ -19,6 +19,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        if (!in_array(config('sync.role'), ['parent', 'child'], true)) {
+            throw new \LogicException('SYNC_ROLE must be either parent or child.');
+        }
+
         \Illuminate\Support\Facades\RateLimiter::for('api', function (\Illuminate\Http\Request $request) {
             return \Illuminate\Cache\RateLimiting\Limit::perMinute(60)
                 ->by($request->user()?->id ?: $request->ip());

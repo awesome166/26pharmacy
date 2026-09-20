@@ -1,25 +1,39 @@
-# Laravel + Vue Starter Kit
+# Pharmacy POS
 
-## Introduction
+Laravel 12, Vue 3, TypeScript, and Inertia pharmacy POS with a local event ledger and cloud synchronization.
 
-Our Vue starter kit provides a robust, modern starting point for building Laravel applications with a Vue frontend using [Inertia](https://inertiajs.com).
+## Deployment roles
 
-Inertia allows you to build modern, single-page Vue applications using classic server-side routing and controllers. This lets you enjoy the frontend power of Vue combined with the incredible backend productivity of Laravel and lightning-fast Vite compilation.
+Set `SYNC_ROLE` explicitly for every build:
 
-This Vue starter kit utilizes Vue 3 and the Composition API, TypeScript, Tailwind, and the [shadcn-vue](https://www.shadcn-vue.com) component library.
+- `child` — installed POS. It commits business data and its outbound ledger event in the same database transaction, then uploads with its unique device credential.
+- `parent` — cloud authority. Only this route cache exposes `/api/v1/sync/receive`, `/serve`, and the retired restore endpoint.
 
-## Official Documentation
+Build and cache routes independently for each role. A device token authenticates one registered device; it is not an administrator credential. Do not expose device tokens through Vite variables, browser storage, source control, or shared installers.
 
-Documentation for all Laravel starter kits can be found on the [Laravel website](https://laravel.com/docs/starter-kits).
+## Local development
 
-## Contributing
+1. Install dependencies: `composer install && npm install`.
+2. Copy `.env.example` to `.env`, set `APP_KEY`, and configure the database.
+3. Run `php artisan migrate` and `npm run build`.
+4. Run the app plus matching workers:
 
-Thank you for considering contributing to our starter kit! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+   `php artisan queue:work --queue=sync-outbox,sync-inbox,default --timeout=60 --tries=5`
 
-## Code of Conduct
+   `php artisan schedule:work`
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+Parent devices must have an active `device_sync_policies` record with `download_mode=continuous` before `/serve` returns business data. Uploads remain enabled when downloads are disabled.
 
-## License
+## Recovery status
 
-The Laravel + Vue starter kit is open-sourced software licensed under the MIT license.
+The old full-restore endpoint is deliberately disabled because it could erase local read models while unsynced ledger entries still existed. Restore must use the staged, device-bound grant protocol described in `docs/OFFLINE_CLOUD_POS_IMPLEMENTATION_BRIEF.md`; it has not yet been implemented. Keep encrypted backups and preserve the local ledger before recovery work.
+
+NativePHP packaging, per-device secure credential storage, scoped restore grants, inventory allocations, and mobile lifecycle adapters remain planned work; this repository does not claim these distributions are available yet.
+
+## Verification
+
+Run focused tests first, then the full suite:
+
+`php artisan test tests/Feature/Sync/SyncPipelineTest.php`
+
+`php artisan test`

@@ -11,6 +11,7 @@ use App\Services\SyncService;
 use AbacPermissions\Models\Account;
 use AbacPermissions\Tenancy\TenantContext;
 use RuntimeException;
+use Illuminate\Queue\Middleware\WithoutOverlapping;
 
 /**
  * Job to pull events from the cloud to the local branch.
@@ -41,6 +42,14 @@ class PullCloudEventsJob implements ShouldQueue
         if (!($result['ok'] ?? false)) {
             throw new RuntimeException($result['message'] ?? 'Cloud sync pull failed.');
         }
+    }
+
+    public function middleware(): array
+    {
+        return [
+            (new WithoutOverlapping("sync:{$this->accountId}:{$this->deviceId}"))
+                ->shared()->releaseAfter(5)->expireAfter(120),
+        ];
     }
 
     public function backoff(): array

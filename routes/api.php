@@ -112,10 +112,13 @@ Route::prefix('v1')->group(function () {
         Route::get('/audit-trail', [AuditController::class, 'index'])->middleware('can:audit_trail.view');
     });
 
-    // Cloud Sync Endpoints - authenticated via sync token, NOT user session
-    Route::prefix('sync')->middleware(['sync.token', 'throttle:sync'])->group(function () {
-        Route::post('/receive', [\App\Http\Controllers\Api\v1\CloudSyncController::class, 'receiveBatch']);
-        Route::get('/serve', [\App\Http\Controllers\Api\v1\CloudSyncController::class, 'serveBatch']);
-        Route::get('/full-restore', [\App\Http\Controllers\Api\v1\CloudSyncController::class, 'fullRestore']);
-    });
+    // Cloud endpoints do not exist in child route caches. Device credentials do
+    // not grant cloud operator privileges; they only authenticate this API.
+    if (config('sync.role') === 'parent') {
+        Route::prefix('sync')->middleware(['sync.role:parent', 'sync.token', 'throttle:sync'])->group(function () {
+            Route::post('/receive', [\App\Http\Controllers\Api\v1\CloudSyncController::class, 'receiveBatch']);
+            Route::get('/serve', [\App\Http\Controllers\Api\v1\CloudSyncController::class, 'serveBatch']);
+            Route::get('/full-restore', [\App\Http\Controllers\Api\v1\CloudSyncController::class, 'fullRestore']);
+        });
+    }
 });

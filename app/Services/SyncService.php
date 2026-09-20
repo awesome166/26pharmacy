@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Crypt;
+use App\Services\Sync\UploadAcknowledgements;
 
 class SyncService
 {
@@ -161,24 +162,12 @@ class SyncService
             ]);
 
             if ($response->successful()) {
-                $processed = $response->json('processed');
-                $assignments = $response->json('assignments');
-
-                if ($assignments && count($assignments) > 0) {
-                    foreach ($assignments as $eventId => $globalSeq) {
-                        DB::table('event_ledger')
-                            ->where('id', $eventId)
-                            ->update([
-                                'global_sequence' => $globalSeq,
-                                'sync_status' => 'synced',
-                            ]);
-                    }
-                } elseif ($processed > 0 && empty($assignments)) {
-                    Log::warning("Sync Push: Cloud processed {$processed} events but returned no assignments. Resetting synced_at.");
-                    DB::table('event_ledger')
-                        ->whereIn('id', $eventIds)
-                        ->update(['synced_at' => null, 'sync_status' => 'pending']);
+                $processed = (int) $response->json('processed', 0);
+                $assignments = $response->json('assignments', []);
+                if (!is_array($assignments)) {
+                    throw new \RuntimeException('INVALID_ACKNOWLEDGEMENT_RESPONSE');
                 }
+                app(UploadAcknowledgements::class)->apply($accountId, $this->clientId, $eventIds, $assignments);
 
                 Log::info("Sync Push: Processed {$processed} events.");
                 return ['ok' => true, 'processed' => (int) $processed];
@@ -336,55 +325,6 @@ class SyncService
 
     public function restoreFromCloud(): array
     {
-        if (!$this->hasCloudConfig()) {
-            return ['ok' => false, 'message' => 'Cloud sync is not configured.'];
-        }
-
-        $accountId = $this->accountId();
-        if (!$accountId) {
-            Log::error("Sync Restore: No account context.");
-            return ['ok' => false, 'message' => 'No account context.'];
-        }
-
-        try {
-            $response = Http::timeout(60)->withHeaders([
-                'X-Sync-Client-Id' => $this->clientId,
-                'Authorization' => 'Bearer ' . ($this->apiToken ?? ''),
-                'Accept' => 'application/json',
-            ])->get("{$this->cloudUrl}/api/v1/sync/full-restore");
-
-            if (!$response->successful()) {
-                Log::error("Sync Restore Failed: " . $response->body());
-                return ['ok' => false, 'message' => 'Cloud rejected restore.', 'status' => $response->status()];
-            }
-
-            $events = $response->json('events');
-            if (is_array($response->json('access_snapshot'))) {
-                app(AccessSnapshotService::class)->import($response->json('access_snapshot'), (string) $accountId);
-            }
-            if (empty($events)) {
-                Log::info("Sync Restore: No events to restore.");
-                return ['ok' => true, 'processed' => 0];
-            }
-
-            DB::transaction(function () use ($accountId, $events) {
-                app(ProjectionService::class)->resetReadModels($accountId, $events);
-
-                foreach ($events as $event) {
-                    $existing = DB::table('event_ledger')->where('id', $event['id'])->first();
-                    if (!$existing) {
-                        $this->ingestEvent((array) $event);
-                        continue;
-                    }
-                    app(ProjectionService::class)->projectEvent($existing);
-                }
-            });
-
-            Log::info("Sync Restore: Restored " . count($events) . " events for account {$accountId}.");
-            return ['ok' => true, 'processed' => count($events)];
-        } catch (\Exception $e) {
-            Log::error("Sync Restore Error: " . $e->getMessage());
-            return ['ok' => false, 'message' => $e->getMessage()];
-        }
+        return ['ok' => false, 'message' => 'Restore requires the staged, device-bound restore protocol and is not available through the legacy endpoint.'];
     }
 }
